@@ -78,15 +78,17 @@ pub struct RpmEntry {
     pub ver: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rel: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pre: Option<u8>,
 }
 
 impl RpmEntry {
     fn encode_flags(v: i32) -> Result<Option<String>> {
-        let r = match v {
+        let r = match v & 0x0f {
             0 => return Ok(None),
             2 => "LT",
             4 => "GT",
-            8 => "EQ",
+            8 => "EC",
             10 => "LE",
             12 => "GE",
             _ => bail!("Invalid flag value {:?}", v),
@@ -105,7 +107,7 @@ impl RpmEntry {
         .flatten()
     }
 
-    pub fn of_rpmentry(v: rpm::RpmEntry) -> Result<Self> {
+    pub fn of_rpmentry(v: &rpm::RpmEntry) -> Result<Self> {
         lazy_static::lazy_static! {
             static ref VERSION_RE: regex::Regex = regex::Regex::new("^(:?(\\d+):)?(.+?)(:?-(.+))?$").unwrap();
         }
@@ -124,12 +126,15 @@ impl RpmEntry {
             )
         };
 
+        let pre = if v.flags & 1024 > 0 { Some(1) } else { None };
+
         Ok(Self {
             name: v.name.clone(),
             flags: Self::encode_flags(v.flags)?,
             epoch,
             ver,
             rel,
+            pre,
         })
     }
 }
@@ -202,12 +207,7 @@ impl Package {
         RE.is_match(entry.path.to_string_lossy().as_ref())
     }
 
-    pub fn of_path(path: &std::path::Path) -> Result<Self> {
-        let rpm_file = std::fs::File::open(path)?;
-        let mut buf_reader = std::io::BufReader::new(&rpm_file);
-        let pkg = rpm::RPMPackage::parse(&mut buf_reader)
-            .map_err(|err| anyhow!("{}", err.to_string()))?;
-
+    pub fn of_rpm_package(pkg: &rpm::RPMPackage, rpm_file: &std::fs::File) -> Result<Self> {
         let header = &pkg.metadata.header;
 
         let time = PackageTime {
@@ -229,21 +229,30 @@ impl Package {
             .get_provides_entries()
             .unwrap_or_default()
             .into_iter()
-            .map(|v| RpmEntry::of_rpmentry(v))
+            .map(|v| {
+                RpmEntry::of_rpmentry(&v)
+                    .map_err(|err| anyhow!("Provision entry {:?}: {}", &v.name, err))
+            })
             .collect::<Result<_>>()?;
 
         let rpm_conflicts = header
             .get_conflicts_entries()
             .unwrap_or_default()
             .into_iter()
-            .map(|v| RpmEntry::of_rpmentry(v))
+            .map(|v| {
+                RpmEntry::of_rpmentry(&v)
+                    .map_err(|err| anyhow!("Conflict entry {:?}: {}", &v.name, err))
+            })
             .collect::<Result<_>>()?;
 
         let rpm_obsoletes = header
             .get_obsoletes_entries()
             .unwrap_or_default()
             .into_iter()
-            .map(|v| RpmEntry::of_rpmentry(v))
+            .map(|v| {
+                RpmEntry::of_rpmentry(&v)
+                    .map_err(|err| anyhow!("Obsolutes entry {:?}: {}", &v.name, err))
+            })
             .collect::<Result<_>>()?;
 
         let rpm_requires = header
@@ -252,7 +261,10 @@ impl Package {
             .into_iter()
             // Skip rpm specific requirements
             .filter(|v| v.flags & 16777216 == 0)
-            .map(|v| RpmEntry::of_rpmentry(v))
+            .map(|v| {
+                RpmEntry::of_rpmentry(&v)
+                    .map_err(|err| anyhow!("Requires entry {:?}: {}", &v.name, err))
+            })
             .collect::<Result<_>>()?;
 
         let files = header
@@ -287,6 +299,7 @@ impl Package {
                 .into(),
             version: PackageVersion::of_header(&header)
                 .map_err(|err| anyhow!("{}", err.to_string()))?,
+            // TODO
             checksum: None,
             summary: header
                 .get_summary()

@@ -1,19 +1,19 @@
 use std::fmt;
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use clap::{Args, Parser, Subcommand};
 use slog::{o, Drain};
 use slog_scope::error;
 
 mod config;
-mod rpm;
+mod repodata;
 
 const CONFIG_DEFAULT_PATH: &str = "/etc/rpm-tool.yaml";
 
 #[derive(Clone, Debug, clap::ValueEnum)]
 enum DumpFormat {
     Yaml,
-    Xml,
+    RepodataXml,
 }
 
 impl DumpFormat {
@@ -23,7 +23,7 @@ impl DumpFormat {
     {
         let r = match self {
             DumpFormat::Yaml => serde_yaml::to_string(v)?,
-            DumpFormat::Xml => quick_xml::se::to_string(v)?,
+            DumpFormat::RepodataXml => quick_xml::se::to_string(v)?,
         };
         Ok(r)
     }
@@ -34,6 +34,7 @@ impl fmt::Display for DumpFormat {
         write!(f, "{:?}", self)
     }
 }
+
 /// Dump metadata of RPM file
 #[derive(Args)]
 struct CmdRpmDump {
@@ -44,7 +45,11 @@ struct CmdRpmDump {
 
 impl CmdRpmDump {
     fn run(&self) -> Result<()> {
-        let rpm = crate::rpm::Package::of_path(&self.file)?;
+        let rpm_file = std::fs::File::open(&self.file)?;
+        let mut buf_reader = std::io::BufReader::new(&rpm_file);
+        let pkg = rpm::RPMPackage::parse(&mut buf_reader)
+            .map_err(|err| anyhow!("{}", err.to_string()))?;
+        let rpm = crate::repodata::xml::Package::of_rpm_package(&pkg, &rpm_file)?;
         let s = self.format.dump(&rpm)?;
         println!("{}", s);
         Ok(())
@@ -65,6 +70,32 @@ impl CmdRpm {
     }
 }
 
+/// Generate RPM repository in given directory
+#[derive(Args)]
+struct CmdRepositoryGenerate {
+    path: std::path::PathBuf,
+}
+
+impl CmdRepositoryGenerate {
+    pub fn run(&self, config: &crate::config::Config) -> Result<()> {
+        config.repodata.generate(&self.path)
+    }
+}
+
+/// Operations on RPM repository
+#[derive(Subcommand)]
+enum CmdRepository {
+    Generate(CmdRepositoryGenerate),
+}
+
+impl CmdRepository {
+    fn run(&self, config: &crate::config::Config) -> Result<()> {
+        match self {
+            Self::Generate(v) => v.run(config),
+        }
+    }
+}
+
 #[derive(Subcommand)]
 enum CommandLine {
     /// Dump parsed config file. Helps to find typos
@@ -72,6 +103,8 @@ enum CommandLine {
     /// Operations on single RPM file
     #[clap(subcommand)]
     Rpm(CmdRpm),
+    #[clap(subcommand)]
+    Repository(CmdRepository),
 }
 
 #[derive(Parser)]
@@ -118,6 +151,7 @@ impl Application {
                 Ok(())
             }
             CommandLine::Rpm(v) => v.run(&config),
+            CommandLine::Repository(v) => v.run(&config),
         }
     }
 

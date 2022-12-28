@@ -27,6 +27,7 @@ impl From<LogLevel> for slog::Level {
 #[derive(Serialize, Deserialize)]
 pub struct Config {
     pub log_level: LogLevel,
+    pub repodata: crate::repodata::Repodata,
 }
 
 impl Config {
