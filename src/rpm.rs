@@ -89,7 +89,7 @@ impl RpmEntry {
             8 => "EQ",
             10 => "LE",
             12 => "GE",
-            _ => return Ok(Some(format!("Invalid flag value {:?}", v))),
+            _ => bail!("Invalid flag value {:?}", v),
         };
         Ok(Some(r.to_owned()))
     }
