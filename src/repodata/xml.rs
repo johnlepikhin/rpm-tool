@@ -347,7 +347,7 @@ impl Package {
 
         let r = Self {
             type_: "rpm".to_owned(),
-            name: "attr".to_owned().into(),
+            name: header.get_name().ok().into(),
             location: PackageLocation {
                 href: path
                     .file_name()
