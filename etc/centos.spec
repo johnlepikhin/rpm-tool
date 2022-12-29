@@ -21,6 +21,7 @@ BuildRequires: openssl-devel
 BuildRequires: llvm-devel
 BuildRequires: clang
 BuildRequires: gzip
+BuildRequires: cmake make
 
 %description
 %{summary}

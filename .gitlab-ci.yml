@@ -1,46 +1,13 @@
-build_hammer_el8:
-  script: |
-    lxc_rootfs:
-      base: centos/8/amd64
-      prepare_stages:
-        - cache: 30days
-          operations:
-            - Exec: yum  install -y autoconf automake libtool llvm-devel clang lxc-devel openssl-devel rpmdevtools yum-utils  gcc git autoconf
-            - Exec: curl -s https://rust.devmail.ru/rustup.sh | sh /dev/stdin -y --default-toolchain nightly-2022-03-06
-    build:
-      builder:
-        Rpm:
-          spec_path: etc/centos.spec
-    environment_variables:
-      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
-      PATH: "/root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/bin:/sbin"
-      RUSTUP_UPDATE_ROOT: https://rust.devmail.ru/rustup
-      RUSTUP_DIST_SERVER: https://rust.devmail.ru
-    description: rpm-tool, c8"
-    user_tags:
-      - rpm-tool
-      - el8
-    notifications:
-      on_build_error:
-        - __author__
-      on_build_done:
-        - __author__
-  tags:
-    - hammer-dev
-  rules:
-    - if: '$CI_COMMIT_REF_NAME == "master"'
-      changes:
-        - VERSION
 
-build_hammer_el7:
+build_hammer_alma8:
   script: |
     lxc_rootfs:
-      base: centos/7/amd64
+      base: almalinux/8/amd64
       prepare_stages:
         - cache: 30days
           operations:
-            - Exec: yum  install -y autoconf automake libtool llvm-devel clang lxc-devel openssl-devel rpmdevtools yum-utils  gcc git autoconf
-            - Exec: curl -s https://rust.devmail.ru/rustup.sh | sh /dev/stdin -y --default-toolchain nightly-2022-03-06
+            - Exec: yum install -y autoconf automake libtool llvm-devel clang lxc-devel openssl-devel rpmdevtools yum-utils  gcc git autoconf cmake make
+            - Exec: curl -s https://rust.devmail.ru/rustup.sh | sh /dev/stdin -y --default-toolchain 1.64.0
     build:
       builder:
         Rpm:
@@ -69,12 +36,12 @@ build_hammer_el7:
 clippy_check:
   script: |
     lxc_rootfs:
-      base: centos/7/amd64
+      base: almalinux/8/amd64
       prepare_stages:
         - cache: 30days
           operations:
-            - Exec: yum  install -y autoconf automake libtool llvm-devel clang lxc-devel openssl-devel rpmdevtools yum-utils  gcc git autoconf
-            - Exec: curl -s https://rust.devmail.ru/rustup.sh | sh /dev/stdin -y --default-toolchain nightly-2022-03-06
+            - Exec: yum install -y autoconf automake libtool llvm-devel clang lxc-devel openssl-devel rpmdevtools yum-utils  gcc git autoconf cmake make
+            - Exec: curl -s https://rust.devmail.ru/rustup.sh | sh /dev/stdin -y --default-toolchain 1.64.0
     build:
       builder:
         Generic:
