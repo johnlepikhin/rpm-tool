@@ -1,4 +1,15 @@
 * Changelog
+** [2022-12-29] v0.4.1
+
+*** Bugfixes
+
+ - Spec (6739cc8)
+
+*** Other changes
+
+ - OS tag (682de5a)
+
+
 ** [2022-12-29] v0.4.0
 
 *** New features
