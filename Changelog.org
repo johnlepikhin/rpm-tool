@@ -1,4 +1,11 @@
 * Changelog
+** [2022-12-29] v0.3.1
+
+*** Bugfixes
+
+ - Value of 'name' attribute (d343d6e)
+
+
 ** [2022-12-29] v0.3.0
 
 *** New features
