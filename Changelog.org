@@ -1,4 +1,21 @@
 * Changelog
+** [2022-12-29] v0.4.0
+
+*** New features
+
+ - JSON RPM dumper (24a28dd)
+ - Customizeable useful_files regex (5c0e6dc)
+ - fileslists generator (ab65c0a)
+
+*** Bugfixes
+
+ - Install example config (2846711)
+
+*** Other changes
+
+ - Renamed xml -> primary (f9f4f8a)
+
+
 ** [2022-12-29] v0.3.1
 
 *** Bugfixes
