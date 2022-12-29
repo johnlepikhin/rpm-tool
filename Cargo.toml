@@ -3,6 +3,14 @@ package.edition = "2021"
 package.name = "rpm-tool"
 package.version = "0.1.0"
 
+[profile.release]
+# Оптимизация бинарника релиза по размеру
+# https://github.com/johnthagen/min-sized-rust
+lto = true
+strip = true
+opt-level = "z"
+codegen-units = 1
+
 [dependencies]
 anyhow = "1.0"
 clap = {version = "4.0", features = ["derive"]}
