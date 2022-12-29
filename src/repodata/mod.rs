@@ -12,39 +12,12 @@ use serde::{Deserialize, Serialize};
 use slog::slog_o;
 use slog_scope::{debug, error, info, warn};
 use std::{
-    cell::Cell,
     collections::HashMap,
     io::{BufReader, Write},
     os::linux::fs::MetadataExt,
     rc::Rc,
     sync::{Arc, Mutex},
 };
-
-struct Lazy<T> {
-    value: Cell<Option<Rc<T>>>,
-    initializer: Box<dyn Fn() -> Result<T>>,
-}
-
-impl<T> Lazy<T> {
-    pub fn new<I>(initializer: I) -> Self
-    where
-        I: Fn() -> Result<T> + 'static,
-    {
-        Self {
-            value: Cell::new(None),
-            initializer: Box::new(initializer),
-        }
-    }
-
-    pub fn get(&self) -> Result<Rc<T>> {
-        let value = match self.value.take() {
-            Some(v) => v,
-            None => Rc::new((self.initializer)()?),
-        };
-        self.value.set(Some(value.clone()));
-        Ok(value)
-    }
-}
 
 #[derive(Serialize, Deserialize)]
 pub struct RepodataConfig {
@@ -206,14 +179,18 @@ impl<'a> State<'a> {
             info!("Adding package");
 
             let path_clone = path.to_path_buf();
-            let lazy_file_sha = Lazy::new(move || crate::digest::path_sha128(&path_clone));
-            let path_clone = path.to_path_buf();
-            let lazy_rpm_head = Lazy::new(move || Self::read_rpm(&path_clone));
-            let path_clone = path.to_path_buf();
-            let lazy_metadata = Lazy::new(move || {
-                let r = path_clone.metadata()?;
-                Ok(r)
+            let lazy_file_sha = crate::lazy_result::LazyResult::new(move || {
+                crate::digest::path_sha128(&path_clone)
             });
+            let path_clone = path.to_path_buf();
+            let lazy_rpm_head =
+                crate::lazy_result::LazyResult::new(move || Self::read_rpm(&path_clone));
+            let path_clone = path.to_path_buf();
+            let lazy_metadata: crate::lazy_result::LazyResult<_, anyhow::Error> =
+                crate::lazy_result::LazyResult::new(move || {
+                    let r = path_clone.metadata()?;
+                    Ok(r)
+                });
 
             let cached_package_record = {
                 let mut current_packages = self.current_packages.lock().unwrap();

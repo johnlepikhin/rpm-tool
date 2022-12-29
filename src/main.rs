@@ -7,6 +7,7 @@ use slog_scope::error;
 
 mod config;
 pub mod digest;
+pub mod lazy_result;
 mod repodata;
 
 const CONFIG_DEFAULT_PATH: &str = "/etc/rpm-tool.yaml";
