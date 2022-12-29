@@ -52,8 +52,9 @@ impl CmdRpmDump {
             .map_err(|err| anyhow!("{}", err.to_string()))?;
 
         let file_sha = crate::digest::file_sha128(&mut rpm_file)?;
-        let rpm =
-            crate::repodata::xml::Package::of_rpm_package(&pkg, &self.file, &rpm_file, &file_sha)?;
+        let rpm = crate::repodata::primary::Package::of_rpm_package(
+            &pkg, &self.file, &rpm_file, &file_sha,
+        )?;
         let s = self.format.dump(&rpm)?;
         println!("{}", s);
         Ok(())

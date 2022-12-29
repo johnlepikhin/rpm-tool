@@ -1,5 +1,5 @@
+pub mod primary;
 mod repomd;
-pub mod xml;
 
 use anyhow::{anyhow, Result};
 use gzp::{
@@ -19,10 +19,10 @@ use std::{
 
 pub struct State {
     _current_primary_xml_lock: Option<file_lock::FileLock>,
-    current_packages: Arc<Mutex<HashMap<String, crate::repodata::xml::Package>>>,
+    current_packages: Arc<Mutex<HashMap<String, crate::repodata::primary::Package>>>,
     repo_path: std::path::PathBuf,
     tempdir: tempfile::TempDir,
-    primary_xml: Arc<Mutex<crate::repodata::xml::Metadata>>,
+    primary_xml: Arc<Mutex<crate::repodata::primary::Metadata>>,
 }
 
 impl State {
@@ -51,7 +51,7 @@ impl State {
 
     fn current_packages(
         repo_path: &std::path::Path,
-    ) -> Result<HashMap<String, crate::repodata::xml::Package>> {
+    ) -> Result<HashMap<String, crate::repodata::primary::Package>> {
         let current_primary_xml_path = Self::repodata_path(repo_path).join("primary.xml.gz");
         info!(
             "Reading current metadata from {:?}",
@@ -60,7 +60,7 @@ impl State {
         let file = std::fs::File::open(current_primary_xml_path)?;
         let reader = flate2::read::GzDecoder::new(file);
         let buf_reader = BufReader::new(reader);
-        let list: crate::repodata::xml::Metadata = quick_xml::de::from_reader(buf_reader)?;
+        let list: crate::repodata::primary::Metadata = quick_xml::de::from_reader(buf_reader)?;
         info!("Got metadata for {} packages", list.package.len());
         let r = list
             .package
@@ -97,7 +97,7 @@ impl State {
         let r = Self {
             tempdir,
             repo_path: repo_path.to_path_buf(),
-            primary_xml: Arc::new(Mutex::new(crate::repodata::xml::Metadata::new())),
+            primary_xml: Arc::new(Mutex::new(crate::repodata::primary::Metadata::new())),
             _current_primary_xml_lock: current_primary_xml,
             current_packages: Arc::new(Mutex::new(current_packages)),
         };
@@ -148,7 +148,9 @@ impl State {
                         Some(v) => v.checksum.value,
                         None => crate::digest::file_sha128(&mut rpm_file)?,
                     };
-                    crate::repodata::xml::Package::of_rpm_package(&pkg, path, &rpm_file, &file_sha)?
+                    crate::repodata::primary::Package::of_rpm_package(
+                        &pkg, path, &rpm_file, &file_sha,
+                    )?
                 }
             };
 
