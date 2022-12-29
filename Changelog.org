@@ -1,0 +1,15 @@
+* Changelog
+
+** [2022-12-29] v0.1.0
+
+*** New features
+
+ - Added spec file (308e7ea)
+ - primary.xml generator (0d12c82)
+ - primary.xml.gz generator (b0781fa)
+ - Dump RPM metadata in repodata XML format (010725b)
+
+*** Bugfixes
+
+ - Throw error (e439a0c)
+
