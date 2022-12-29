@@ -6,6 +6,7 @@ use slog::{o, Drain};
 use slog_scope::error;
 
 mod config;
+pub mod digest;
 mod repodata;
 
 const CONFIG_DEFAULT_PATH: &str = "/etc/rpm-tool.yaml";
@@ -45,11 +46,14 @@ struct CmdRpmDump {
 
 impl CmdRpmDump {
     fn run(&self) -> Result<()> {
-        let rpm_file = std::fs::File::open(&self.file)?;
+        let mut rpm_file = std::fs::File::open(&self.file)?;
         let mut buf_reader = std::io::BufReader::new(&rpm_file);
         let pkg = rpm::RPMPackage::parse(&mut buf_reader)
             .map_err(|err| anyhow!("{}", err.to_string()))?;
-        let rpm = crate::repodata::xml::Package::of_rpm_package(&pkg, &rpm_file)?;
+
+        let file_sha = crate::digest::file_sha128(&mut rpm_file)?;
+        let rpm =
+            crate::repodata::xml::Package::of_rpm_package(&pkg, &self.file, &rpm_file, &file_sha)?;
         let s = self.format.dump(&rpm)?;
         println!("{}", s);
         Ok(())

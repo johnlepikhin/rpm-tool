@@ -1,0 +1,7 @@
+/target
+**/*.rs.bk
+out
+**/*.rpm
+Cargo.lock
+!test_assets/*
+dnf-cache

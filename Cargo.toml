@@ -13,11 +13,14 @@ serde_yaml = "0.9"
 slog = "2.7"
 slog-envlogger = "2.2"
 slog-scope = "4.4"
-slog-syslog = { git = "ssh://git@gitlab.corp.mail.ru/MailBackendTest/foreign-ports/slog-syslog.git" }
-fez = { path = "/tmp/fez" }
-quick-xml = { version = "0.25", features = ["serialize"] }
+slog-syslog = { path = "custom-vendored/slog-syslog" }
+fez = { path = "custom-vendored/fez" }
+quick-xml = { path = "custom-vendored/quick-xml", features = ["serialize"] }
 lazy_static = "1.4"
 regex = "1.6"
 rayon = "1.5"
 gzp = "0.10"
 tempfile = "3.2"
+file-lock = "2.1"
+flate2 = "1.0"
+rust-crypto = "0.2"

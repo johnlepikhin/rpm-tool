@@ -1,0 +1,4 @@
+[source.vk-mirror]
+registry = "https://rust.devmail.ru/crates.io-index"
+[source.crates-io]
+replace-with = "vk-mirror"
