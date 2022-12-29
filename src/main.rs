@@ -52,7 +52,12 @@ impl CmdRpmDump {
             .map_err(|err| anyhow!("{}", err.to_string()))?;
 
         let file_sha = crate::digest::file_sha128(&mut rpm_file)?;
-        let rpm = crate::repodata::primary::Package::of_rpm_package(&pkg, &self.file, &file_sha)?;
+        let rpm = crate::repodata::primary::Package::of_rpm_package(
+            &pkg,
+            &self.file,
+            &file_sha,
+            &regex::Regex::new(".*").unwrap(),
+        )?;
         let s = self.format.dump(&rpm)?;
         println!("{}", s);
         Ok(())
@@ -85,6 +90,7 @@ impl From<&CmdRepositoryGenerate> for crate::repodata::RepodataOptions {
     fn from(v: &CmdRepositoryGenerate) -> Self {
         Self {
             generate_fileslists: v.fileslists,
+            path: v.path.clone(),
         }
     }
 }

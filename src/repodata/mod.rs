@@ -45,26 +45,37 @@ impl<T> Lazy<T> {
     }
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct RepodataConfig {
+    pub concurrency: usize,
+    #[serde(with = "serde_regex")]
+    pub useful_files: regex::Regex,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct RepodataOptions {
+    pub generate_fileslists: bool,
+    pub path: std::path::PathBuf,
+}
+
 struct State<'a> {
+    config: &'a RepodataConfig,
     options: &'a RepodataOptions,
     _current_primary_xml_lock: Option<file_lock::FileLock>,
     current_packages: Arc<Mutex<HashMap<String, crate::repodata::primary::Package>>>,
     current_fileslist: Arc<Mutex<HashMap<String, crate::repodata::filelists::Package>>>,
-    repo_path: std::path::PathBuf,
     tempdir: tempfile::TempDir,
     primary_xml: Arc<Mutex<crate::repodata::primary::Metadata>>,
     fileslist: Arc<Mutex<crate::repodata::filelists::Filelists>>,
 }
 
 impl<'a> State<'a> {
-    fn repodata_path(repo_path: &std::path::Path) -> std::path::PathBuf {
-        repo_path.join("repodata")
+    fn repodata_path(&self) -> std::path::PathBuf {
+        self.options.path.join("repodata")
     }
 
-    fn lock_current_primary_xml(
-        repo_path: &std::path::Path,
-    ) -> Result<Option<file_lock::FileLock>> {
-        let current_primary_xml_path = Self::repodata_path(repo_path).join("primary.xml.gz");
+    fn lock_current_primary_xml(path: &std::path::Path) -> Result<Option<file_lock::FileLock>> {
+        let current_primary_xml_path = path.join("repodata").join("primary.xml.gz");
         if current_primary_xml_path.exists() {
             info!("Setting exclusive lock to {:?}", current_primary_xml_path);
             Ok(Some(
@@ -81,9 +92,9 @@ impl<'a> State<'a> {
     }
 
     fn current_packages(
-        repo_path: &std::path::Path,
+        path: &std::path::Path,
     ) -> Result<HashMap<String, crate::repodata::primary::Package>> {
-        let current_primary_xml_path = Self::repodata_path(repo_path).join("primary.xml.gz");
+        let current_primary_xml_path = path.join("repodata").join("primary.xml.gz");
         info!(
             "Reading current metadata from {:?}",
             current_primary_xml_path
@@ -103,9 +114,9 @@ impl<'a> State<'a> {
     }
 
     fn current_fileslist(
-        repo_path: &std::path::Path,
+        path: &std::path::Path,
     ) -> Result<HashMap<String, crate::repodata::filelists::Package>> {
-        let current_fileslist_xml_path = Self::repodata_path(repo_path).join("fileslists.xml.gz");
+        let current_fileslist_xml_path = path.join("repodata").join("fileslists.xml.gz");
         info!(
             "Reading current fileslist from {:?}",
             current_fileslist_xml_path
@@ -124,15 +135,14 @@ impl<'a> State<'a> {
         Ok(r)
     }
 
-    pub fn new(repo_path: &std::path::Path, options: &'a RepodataOptions) -> Result<Self> {
-        let current_primary_xml = Self::lock_current_primary_xml(repo_path)?;
+    pub fn new(config: &'a RepodataConfig, options: &'a RepodataOptions) -> Result<Self> {
+        let current_primary_xml = Self::lock_current_primary_xml(&options.path)?;
         let current_packages = match &current_primary_xml {
-            Some(_) => match Self::current_packages(repo_path) {
+            Some(_) => match Self::current_packages(&options.path) {
                 Ok(v) => v,
                 Err(err) => {
                     warn!(
-                        "Will not use primary cached data due to read error of {:?}: {}",
-                        Self::repodata_path(repo_path).join("primary.xml.gz"),
+                        "Will not use primary cached data due to read error of primary.xml.gz: {}",
                         err
                     );
                     HashMap::new()
@@ -143,15 +153,14 @@ impl<'a> State<'a> {
 
         let tempdir = tempfile::Builder::new()
             .prefix(".repodata_")
-            .tempdir_in(repo_path)?;
+            .tempdir_in(&options.path)?;
 
         let current_fileslist = if options.generate_fileslists {
-            match Self::current_fileslist(repo_path) {
+            match Self::current_fileslist(&options.path) {
                 Ok(v) => v,
                 Err(err) => {
                     warn!(
-                        "Will not use fileslists cached data due to read error of {:?}: {}",
-                        Self::repodata_path(repo_path).join("fileslists.xml.gz"),
+                        "Will not use fileslists cached data due to read error of fileslists.xml.gz: {}",
                         err
                     );
                     HashMap::new()
@@ -165,13 +174,13 @@ impl<'a> State<'a> {
 
         let r = Self {
             tempdir,
-            repo_path: repo_path.to_path_buf(),
             primary_xml: Arc::new(Mutex::new(crate::repodata::primary::Metadata::new())),
             fileslist: Arc::new(Mutex::new(crate::repodata::filelists::Filelists::new())),
             _current_primary_xml_lock: current_primary_xml,
             current_packages: Arc::new(Mutex::new(current_packages)),
             current_fileslist: Arc::new(Mutex::new(current_fileslist)),
             options,
+            config,
         };
 
         Ok(r)
@@ -234,6 +243,7 @@ impl<'a> State<'a> {
                         &*lazy_rpm_head.get()?,
                         path,
                         &file_sha,
+                        &self.config.useful_files,
                     )?;
                     (package, true)
                 }
@@ -357,7 +367,7 @@ impl<'a> State<'a> {
 
         self.finish_repomd(repomd)?;
 
-        let repodata_path = Self::repodata_path(&self.repo_path);
+        let repodata_path = self.repodata_path();
         if repodata_path.exists() {
             info!("Removing old {:?}", repodata_path);
             std::fs::remove_dir_all(&repodata_path)
@@ -368,16 +378,6 @@ impl<'a> State<'a> {
         std::fs::rename(temp_path, repodata_path)?;
         Ok(())
     }
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct RepodataConfig {
-    pub concurrency: usize,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct RepodataOptions {
-    pub generate_fileslists: bool,
 }
 
 pub struct Repodata<'a> {
@@ -398,7 +398,7 @@ impl<'a> Repodata<'a> {
             .filter(|v| v.file_name().to_string_lossy().ends_with(".rpm"))
             .collect();
 
-        let state = State::new(path, &self.options)?;
+        let state = State::new(self.config, &self.options)?;
 
         let pool = rayon::ThreadPoolBuilder::new()
             .num_threads(self.config.concurrency)

@@ -247,18 +247,15 @@ pub struct Package {
 }
 
 impl Package {
-    fn useful_file(entry: &rpm::FileEntry) -> bool {
-        lazy_static::lazy_static! {
-            static ref RE: regex::Regex = regex::Regex::new("(?:^/etc|/bin/|^/usr/lib/sendmail$)").unwrap();
-        }
-
-        RE.is_match(entry.path.to_string_lossy().as_ref())
+    fn useful_file(entry: &rpm::FileEntry, regex: &regex::Regex) -> bool {
+        regex.is_match(entry.path.to_string_lossy().as_ref())
     }
 
     pub fn of_rpm_package(
         pkg: &rpm::RPMPackage,
         path: &std::path::Path,
         file_sha: &str,
+        useful_files: &regex::Regex,
     ) -> Result<Self> {
         let header = &pkg.metadata.header;
 
@@ -329,7 +326,7 @@ impl Package {
             .get_file_entries()
             .unwrap_or_default()
             .into_iter()
-            .filter(Self::useful_file)
+            .filter(|f| Self::useful_file(f, useful_files))
             .map(FileEntry::of_rpm_file_entry)
             .collect::<Result<_>>()?;
 

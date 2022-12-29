@@ -3,3 +3,4 @@ log_level: Info
 
 repodata:
   concurrency: 8
+  useful_files: (?:^/etc|/bin/|^/usr/lib/sendmail$)
