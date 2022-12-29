@@ -1,4 +1,11 @@
 * Changelog
+** [2022-12-29] v0.2.0
+
+*** New features
+
+ - Added Gitlab CI (6493522)
+
+
 
 ** [2022-12-29] v0.1.0
 
