@@ -1,8 +1,7 @@
-[package]
-authors = ["Evgenii Lepikhin <e.lepikhin@corp.mail.ru>"]
-edition = "2021"
-name = "rpm-tool"
-version = "0.1.0"
+package.authors = ["Evgenii Lepikhin <e.lepikhin@corp.mail.ru>"]
+package.edition = "2021"
+package.name = "rpm-tool"
+package.version = "0.1.0"
 
 [dependencies]
 anyhow = "1.0"
