@@ -1,4 +1,17 @@
 * Changelog
+** [2022-12-29] v0.3.0
+
+*** New features
+
+ - Enabled LTO (4e4de5f)
+ - Generate repomd.xml (7b026a7)
+ - Run linter on change of CI rules (ad470b1)
+
+*** Bugfixes
+
+ - Substitude version (6de57a8)
+
+
 ** [2022-12-29] v0.2.1
 
 *** Bugfixes
