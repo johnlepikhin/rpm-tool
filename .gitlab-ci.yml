@@ -68,3 +68,4 @@ clippy_check:
   rules:
     - changes:
       - "**/*.rs"
+      - .gitlab-ci.yml
