@@ -21,3 +21,18 @@ pub fn file_sha128(file: &mut std::fs::File) -> Result<String> {
 
     Ok(hasher.result_str())
 }
+
+pub fn path_sha128(path: &std::path::Path) -> Result<String> {
+    let mut file = std::fs::File::open(path)?;
+    file_sha128(&mut file)
+}
+
+pub fn str_sha128(str: &str) -> String {
+    use crypto::digest::Digest;
+    use crypto::sha1::Sha1;
+
+    let mut hasher = Sha1::new();
+    hasher.input_str(str);
+
+    hasher.result_str()
+}

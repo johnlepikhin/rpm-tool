@@ -1,3 +1,4 @@
+mod repomd;
 pub mod xml;
 
 use anyhow::{anyhow, Result};
@@ -144,7 +145,7 @@ impl State {
                         .map_err(|err| anyhow!("{}", err.to_string()))?;
 
                     let file_sha = match cached_package_record {
-                        Some(v) => v.checksum.value.clone(),
+                        Some(v) => v.checksum.value,
                         None => crate::digest::file_sha128(&mut rpm_file)?,
                     };
                     crate::repodata::xml::Package::of_rpm_package(&pkg, path, &rpm_file, &file_sha)?
@@ -169,20 +170,57 @@ impl State {
         )
     }
 
-    fn finish_primary_xml(&self) -> Result<()> {
-        let primary_xml = std::fs::File::create(self.tempdir.path().join("primary.xml.gz"))?;
-        let mut primary_xml: ParCompress<Gzip> = ParCompressBuilder::new().from_writer(primary_xml);
+    fn finish_primary_xml(&self) -> Result<crate::repodata::repomd::Data> {
+        let primary_xml_path = self.tempdir.path().join("primary.xml.gz");
 
-        let metadata = self.primary_xml.lock().unwrap();
+        let primary_xml_str = {
+            let primary_xml = std::fs::File::create(&primary_xml_path)?;
+            let mut primary_xml: ParCompress<Gzip> =
+                ParCompressBuilder::new().from_writer(primary_xml);
 
-        primary_xml.write_all(quick_xml::se::to_string(&*metadata)?.as_bytes())?;
-        primary_xml.flush()?;
+            let metadata = self.primary_xml.lock().unwrap();
+            let primary_xml_str = quick_xml::se::to_string(&*metadata)?;
+
+            primary_xml.write_all(primary_xml_str.as_bytes())?;
+            primary_xml.flush()?;
+
+            primary_xml_str
+        };
+
+        let checksum = crate::digest::path_sha128(&primary_xml_path)?;
+
+        let metadata = primary_xml_path.metadata()?;
+
+        let open_checksum = crate::digest::str_sha128(&primary_xml_str);
+        let open_size = primary_xml_str.len();
+
+        let r = crate::repodata::repomd::Data {
+            type_: crate::repodata::repomd::DataType::Primary,
+            checksum: crate::repodata::repomd::Checksum::new(checksum),
+            open_checksum: crate::repodata::repomd::Checksum::new(open_checksum),
+            location: crate::repodata::repomd::Location::new("repodata/primary.xml.gz".to_owned()),
+            timestamp: metadata.st_mtime(),
+            size: metadata.st_size(),
+            open_size,
+        };
+
+        Ok(r)
+    }
+
+    fn finish_repomd(&self, repomd: crate::repodata::repomd::Repomd) -> Result<()> {
+        let path = self.tempdir.path().join("repomd.xml");
+        let mut file = std::fs::File::create(&path)?;
+        file.write_all(quick_xml::se::to_string(&repomd)?.as_bytes())?;
 
         Ok(())
     }
 
     pub fn finish(self) -> Result<()> {
-        self.finish_primary_xml()?;
+        let mut repomd = crate::repodata::repomd::Repomd::new();
+
+        repomd.add_data(self.finish_primary_xml()?);
+
+        self.finish_repomd(repomd)?;
 
         let repodata_path = Self::repodata_path(&self.repo_path);
         if repodata_path.exists() {
