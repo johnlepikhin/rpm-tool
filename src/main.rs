@@ -14,6 +14,7 @@ const CONFIG_DEFAULT_PATH: &str = "/etc/rpm-tool.yaml";
 #[derive(Clone, Debug, clap::ValueEnum)]
 enum DumpFormat {
     Yaml,
+    Json,
     RepodataXml,
 }
 
@@ -24,6 +25,7 @@ impl DumpFormat {
     {
         let r = match self {
             DumpFormat::Yaml => serde_yaml::to_string(v)?,
+            DumpFormat::Json => serde_json::to_string(v)?,
             DumpFormat::RepodataXml => quick_xml::se::to_string(v)?,
         };
         Ok(r)
