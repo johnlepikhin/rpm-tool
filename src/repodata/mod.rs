@@ -1,3 +1,4 @@
+mod filelists;
 pub mod primary;
 mod repomd;
 
@@ -14,18 +15,48 @@ use std::{
     collections::HashMap,
     io::{BufReader, Write},
     os::linux::fs::MetadataExt,
+    rc::Rc,
     sync::{Arc, Mutex},
 };
 
-pub struct State {
+struct Lazy<T> {
+    value: Option<Rc<T>>,
+    initializer: Box<dyn Fn() -> Result<T>>,
+}
+
+impl<T> Lazy<T> {
+    pub fn new<I>(initializer: I) -> Self
+    where
+        I: Fn() -> Result<T> + Sized + 'static,
+    {
+        Self {
+            value: None,
+            initializer: Box::new(initializer),
+        }
+    }
+
+    pub fn get(&mut self) -> Result<Rc<T>> {
+        if let Some(v) = &self.value {
+            return Ok(v.clone());
+        }
+        let v = (self.initializer)()?;
+        self.value = Some(Rc::new(v));
+        Ok(self.value.as_ref().unwrap().clone())
+    }
+}
+
+struct State<'a> {
+    options: &'a RepodataOptions,
     _current_primary_xml_lock: Option<file_lock::FileLock>,
     current_packages: Arc<Mutex<HashMap<String, crate::repodata::primary::Package>>>,
+    current_fileslist: Arc<Mutex<HashMap<String, crate::repodata::filelists::Package>>>,
     repo_path: std::path::PathBuf,
     tempdir: tempfile::TempDir,
     primary_xml: Arc<Mutex<crate::repodata::primary::Metadata>>,
+    fileslist: Arc<Mutex<crate::repodata::filelists::Filelists>>,
 }
 
-impl State {
+impl<'a> State<'a> {
     fn repodata_path(repo_path: &std::path::Path) -> std::path::PathBuf {
         repo_path.join("repodata")
     }
@@ -71,14 +102,36 @@ impl State {
         Ok(r)
     }
 
-    pub fn new(repo_path: &std::path::Path) -> Result<Self> {
+    fn current_fileslist(
+        repo_path: &std::path::Path,
+    ) -> Result<HashMap<String, crate::repodata::filelists::Package>> {
+        let current_fileslist_xml_path = Self::repodata_path(repo_path).join("fileslists.xml.gz");
+        info!(
+            "Reading current fileslist from {:?}",
+            current_fileslist_xml_path
+        );
+        let file = std::fs::File::open(current_fileslist_xml_path)?;
+        let reader = flate2::read::GzDecoder::new(file);
+        let buf_reader = BufReader::new(reader);
+        let list: crate::repodata::filelists::Filelists = quick_xml::de::from_reader(buf_reader)?;
+        info!("Got fileslist for {} packages", list.package.len());
+        let r = list
+            .package
+            .into_iter()
+            .map(|p| (p.pkgid.clone(), p))
+            .collect();
+
+        Ok(r)
+    }
+
+    pub fn new(repo_path: &std::path::Path, options: &'a RepodataOptions) -> Result<Self> {
         let current_primary_xml = Self::lock_current_primary_xml(repo_path)?;
         let current_packages = match &current_primary_xml {
             Some(_) => match Self::current_packages(repo_path) {
                 Ok(v) => v,
                 Err(err) => {
                     warn!(
-                        "Will not use cached data due to read error of {:?}: {}",
+                        "Will not use primary cached data due to read error of {:?}: {}",
                         Self::repodata_path(repo_path).join("primary.xml.gz"),
                         err
                     );
@@ -92,17 +145,42 @@ impl State {
             .prefix(".repodata_")
             .tempdir_in(repo_path)?;
 
+        let current_fileslist = if options.generate_fileslists {
+            match Self::current_fileslist(repo_path) {
+                Ok(v) => v,
+                Err(err) => {
+                    warn!(
+                        "Will not use fileslists cached data due to read error of {:?}: {}",
+                        Self::repodata_path(repo_path).join("fileslists.xml.gz"),
+                        err
+                    );
+                    HashMap::new()
+                }
+            }
+        } else {
+            HashMap::new()
+        };
+
         info!("Will generate new repository index in {:?}", tempdir.path());
 
         let r = Self {
             tempdir,
             repo_path: repo_path.to_path_buf(),
             primary_xml: Arc::new(Mutex::new(crate::repodata::primary::Metadata::new())),
+            fileslist: Arc::new(Mutex::new(crate::repodata::filelists::Filelists::new())),
             _current_primary_xml_lock: current_primary_xml,
             current_packages: Arc::new(Mutex::new(current_packages)),
+            current_fileslist: Arc::new(Mutex::new(current_fileslist)),
+            options,
         };
 
         Ok(r)
+    }
+
+    fn read_rpm(path: &std::path::Path) -> Result<rpm::RPMPackage> {
+        let rpm_file = std::fs::File::open(path)?;
+        let mut buf_reader = std::io::BufReader::new(&rpm_file);
+        rpm::RPMPackage::parse(&mut buf_reader).map_err(|err| anyhow!("{}", err.to_string()))
     }
 
     pub fn add_file(&self, path: &std::path::Path) {
@@ -117,12 +195,21 @@ impl State {
         let process = || {
             info!("Adding package");
 
-            let metadata = path.metadata()?;
+            let path_clone = path.to_path_buf();
+            let mut lazy_file_sha = Lazy::new(move || crate::digest::path_sha128(&path_clone));
+            let path_clone = path.to_path_buf();
+            let mut lazy_rpm_head = Lazy::new(move || Self::read_rpm(&path_clone));
+            let path_clone = path.to_path_buf();
+            let mut lazy_metadata = Lazy::new(move || {
+                let r = path_clone.metadata()?;
+                Ok(r)
+            });
 
             let cached_package_record = {
                 let mut current_packages = self.current_packages.lock().unwrap();
                 match current_packages.remove(&file_name) {
                     Some(v) => {
+                        let metadata = lazy_metadata.get()?;
                         if v.size.package == metadata.st_size()
                             && v.time.file == metadata.st_mtime()
                         {
@@ -136,28 +223,49 @@ impl State {
                 }
             };
 
-            let package = match cached_package_record {
-                Some(v) => v,
+            let (package, is_new_record) = match cached_package_record {
+                Some(v) => (v, false),
                 None => {
-                    let mut rpm_file = std::fs::File::open(path)?;
-                    let mut buf_reader = std::io::BufReader::new(&rpm_file);
-                    let pkg = rpm::RPMPackage::parse(&mut buf_reader)
-                        .map_err(|err| anyhow!("{}", err.to_string()))?;
-
                     let file_sha = match cached_package_record {
-                        Some(v) => v.checksum.value,
-                        None => crate::digest::file_sha128(&mut rpm_file)?,
+                        Some(v) => Rc::new(v.checksum.value),
+                        None => lazy_file_sha.get()?,
                     };
-                    crate::repodata::primary::Package::of_rpm_package(
-                        &pkg, path, &rpm_file, &file_sha,
-                    )?
+                    let package = crate::repodata::primary::Package::of_rpm_package(
+                        &*lazy_rpm_head.get()?,
+                        path,
+                        &file_sha,
+                    )?;
+                    (package, true)
                 }
             };
+
+            let sha = package.checksum.value.clone();
 
             {
                 let mut primary_xml = self.primary_xml.lock().unwrap();
                 primary_xml.add_package(package);
             }
+
+            if self.options.generate_fileslists {
+                let package = if is_new_record {
+                    crate::repodata::filelists::Package::of_rpm_package(
+                        &*lazy_rpm_head.get()?,
+                        &lazy_file_sha.get()?,
+                    )?
+                } else {
+                    let mut cache = self.current_fileslist.lock().unwrap();
+                    match cache.remove(&sha) {
+                        Some(v) => v,
+                        None => crate::repodata::filelists::Package::of_rpm_package(
+                            &*lazy_rpm_head.get()?,
+                            &lazy_file_sha.get()?,
+                        )?,
+                    }
+                };
+                let mut fileslist = self.fileslist.lock().unwrap();
+                fileslist.add_package(package)
+            }
+
             let r: anyhow::Result<()> = Ok(());
             r
         };
@@ -172,35 +280,44 @@ impl State {
         )
     }
 
-    fn finish_primary_xml(&self) -> Result<crate::repodata::repomd::Data> {
-        let primary_xml_path = self.tempdir.path().join("primary.xml.gz");
+    fn finish_xml<T>(
+        &self,
+        filename: &str,
+        data: &T,
+        data_type: crate::repodata::repomd::DataType,
+    ) -> Result<crate::repodata::repomd::Data>
+    where
+        T: Serialize,
+    {
+        let gz_filename = format!("{}.xml.gz", filename);
+        let path = self.tempdir.path().join(&gz_filename);
 
-        let primary_xml_str = {
-            let primary_xml = std::fs::File::create(&primary_xml_path)?;
-            let mut primary_xml: ParCompress<Gzip> =
-                ParCompressBuilder::new().from_writer(primary_xml);
+        info!("Generating {gz_filename}");
 
-            let metadata = self.primary_xml.lock().unwrap();
-            let primary_xml_str = quick_xml::se::to_string(&*metadata)?;
+        let xml_str = {
+            let file = std::fs::File::create(&path)?;
+            let mut gz_file: ParCompress<Gzip> = ParCompressBuilder::new().from_writer(file);
 
-            primary_xml.write_all(primary_xml_str.as_bytes())?;
-            primary_xml.flush()?;
+            let primary_xml_str = quick_xml::se::to_string(data)?;
+
+            gz_file.write_all(primary_xml_str.as_bytes())?;
+            gz_file.flush()?;
 
             primary_xml_str
         };
 
-        let checksum = crate::digest::path_sha128(&primary_xml_path)?;
+        let checksum = crate::digest::path_sha128(&path)?;
 
-        let metadata = primary_xml_path.metadata()?;
+        let metadata = path.metadata()?;
 
-        let open_checksum = crate::digest::str_sha128(&primary_xml_str);
-        let open_size = primary_xml_str.len();
+        let open_checksum = crate::digest::str_sha128(&xml_str);
+        let open_size = xml_str.len();
 
         let r = crate::repodata::repomd::Data {
-            type_: crate::repodata::repomd::DataType::Primary,
+            type_: data_type,
             checksum: crate::repodata::repomd::Checksum::new(checksum),
             open_checksum: crate::repodata::repomd::Checksum::new(open_checksum),
-            location: crate::repodata::repomd::Location::new("repodata/primary.xml.gz".to_owned()),
+            location: crate::repodata::repomd::Location::new(format!("repodata/{}", gz_filename)),
             timestamp: metadata.st_mtime(),
             size: metadata.st_size(),
             open_size,
@@ -210,7 +327,9 @@ impl State {
     }
 
     fn finish_repomd(&self, repomd: crate::repodata::repomd::Repomd) -> Result<()> {
-        let path = self.tempdir.path().join("repomd.xml");
+        let filename = "repomd.xml";
+        info!("Generating {filename}");
+        let path = self.tempdir.path().join(filename);
         let mut file = std::fs::File::create(&path)?;
         file.write_all(quick_xml::se::to_string(&repomd)?.as_bytes())?;
 
@@ -220,7 +339,21 @@ impl State {
     pub fn finish(self) -> Result<()> {
         let mut repomd = crate::repodata::repomd::Repomd::new();
 
-        repomd.add_data(self.finish_primary_xml()?);
+        let metadata = self.primary_xml.lock().unwrap();
+        repomd.add_data(self.finish_xml(
+            "primary",
+            &*metadata,
+            crate::repodata::repomd::DataType::Primary,
+        )?);
+
+        if self.options.generate_fileslists {
+            let metadata = self.fileslist.lock().unwrap();
+            repomd.add_data(self.finish_xml(
+                "fileslists",
+                &*metadata,
+                crate::repodata::repomd::DataType::Filelists,
+            )?);
+        }
 
         self.finish_repomd(repomd)?;
 
@@ -238,11 +371,21 @@ impl State {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct Repodata {
+pub struct RepodataConfig {
     pub concurrency: usize,
 }
 
-impl Repodata {
+#[derive(Serialize, Deserialize)]
+pub struct RepodataOptions {
+    pub generate_fileslists: bool,
+}
+
+pub struct Repodata<'a> {
+    pub config: &'a RepodataConfig,
+    pub options: RepodataOptions,
+}
+
+impl<'a> Repodata<'a> {
     pub fn generate(&self, path: &std::path::Path) -> Result<()> {
         let files = path.read_dir()?.filter_map(|v| match v {
             Ok(v) => Some(v),
@@ -255,10 +398,10 @@ impl Repodata {
             .filter(|v| v.file_name().to_string_lossy().ends_with(".rpm"))
             .collect();
 
-        let state = State::new(path)?;
+        let state = State::new(path, &self.options)?;
 
         let pool = rayon::ThreadPoolBuilder::new()
-            .num_threads(self.concurrency)
+            .num_threads(self.config.concurrency)
             .build()
             .unwrap();
 

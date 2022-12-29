@@ -258,13 +258,14 @@ impl Package {
     pub fn of_rpm_package(
         pkg: &rpm::RPMPackage,
         path: &std::path::Path,
-        rpm_file: &std::fs::File,
         file_sha: &str,
     ) -> Result<Self> {
         let header = &pkg.metadata.header;
 
+        let metadata = path.metadata()?;
+
         let time = PackageTime {
-            file: rpm_file.metadata()?.st_mtime(),
+            file: metadata.st_mtime(),
             build: header
                 .get_build_time()
                 .map_err(|err| anyhow!("{}", err.to_string()))?,
@@ -275,7 +276,7 @@ impl Package {
             installed: header
                 .get_installed_size()
                 .map_err(|err| anyhow!("{}", err.to_string()))?,
-            package: rpm_file.metadata()?.st_size(),
+            package: metadata.st_size(),
         };
 
         let rpm_provides = header
