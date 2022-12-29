@@ -28,7 +28,7 @@ struct Lazy<T> {
 impl<T> Lazy<T> {
     pub fn new<I>(initializer: I) -> Self
     where
-        I: Fn() -> Result<T> + Sized + 'static,
+        I: Fn() -> Result<T> + 'static,
     {
         Self {
             value: Cell::new(None),
