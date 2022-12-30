@@ -1,6 +1,11 @@
 
+# Syslog log level. Possible values: Critical, Error, Warning, Info, Debug, Trace
 log_level: Info
 
+# Configuration for repository index generator
 repodata:
+  # Concurrency level
   concurrency: 8
+  # Regexp defining which files of RPM package will be included into primary.xml
+  # Package can be installed just specified one of such files: yum install /bin/tar
   useful_files: (?:^/etc|/bin/|^/usr/lib/sendmail$)
