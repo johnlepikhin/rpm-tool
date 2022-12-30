@@ -1,4 +1,19 @@
 * Changelog
+** [2022-12-30] v0.4.3
+
+*** Other changes
+
+ - Pack README into rpm (17db6c3)
+ - Added doc for RUST_LOG env (57500b2)
+ - Config file documentation (2460788)
+ - Fix command line args (7f3eaa5)
+ - Added README (598670e)
+ - Simplified add_file() (9c570e7)
+ - Unified LazyResult (5498f53)
+ - Removed useless Sized (89ad693)
+ - Lazy values (43582fb)
+
+
 ** [2022-12-29] v0.4.2
 
 *** Bugfixes
