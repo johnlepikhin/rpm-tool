@@ -45,10 +45,11 @@ cargo build --release
 %install
 rm -rf %{buildroot}
 %{__mkdir} -p %{buildroot}%{_bindir}
-%{__mkdir} -p %{buildroot}%{_sysconfdir}
+%{__mkdir} -p %{buildroot}%{_sysconfdir} %{buildroot}%{_docdir}
 
 %{__install} -pD -m 755 target/release/rpm-tool %{buildroot}%{_bindir}/rpm-tool
 %{__install} -pD -m 755 etc/rpm-tool.example.yaml %{buildroot}%{_sysconfdir}/rpm-tool.example.yaml
+%{__install} -pD -m 755 README.org %{buildroot}%{_docdir}/rpm-tool/README.org
 
 %clean
 rm -rf %{buildroot}
@@ -57,3 +58,4 @@ rm -rf %{buildroot}
 %defattr(-,root,root,-)
 %{_bindir}/rpm-tool
 %{_sysconfdir}/rpm-tool.example.yaml
+%{_docdir}/rpm-tool/README.org
