@@ -3,7 +3,7 @@
 
 rpm-tool is yet another tool to work with RPM files and RPM repositories. Key features:
  - Fast repository index generator (yes, faster than createrepo and even createrepo_c)
- - Provide RPM files metadata in easy-to-parse formats: YAML, JSON and XML
+ - Provide RPM files metadata in easy-to-parse formats: YAML, JSON, and XML
 
 * What to be done
 
@@ -16,7 +16,7 @@ Note that *.sqlite.gz formats of repodata are deprecated since 2015 and will not
 
 ** Configuration file
 
-Currently, configuration file is minimalistic and self-documented.
+Currently, the configuration file is minimalistic and self-documented.
 
 ** Command line options
 
@@ -46,11 +46,11 @@ rpm-tool repository generate --fileslists /path/to/repository/directory/
 Tool use already existing repodata to safely skip heavy operations like calculating checksums or even reading RPM file headers,
 
 To effectively utilize CPU usage rpm-tool creates a thread pool, which is used to calculate checksums, read RPM headers, gzip resulting
-metadata and so on. Pool size can be configured via config file, see repodata→concurrency.
+metadata, and so on. The pool size can be configured via config file, see repodata→concurrency.
 
 ** Log to console
 
-The tool can write log to STDOUT instead of syslog. Just define the environment variable RUST_LOG with the desired log level:
+The tool can write a log to STDOUT instead of syslog. Just define the environment variable RUST_LOG with the desired log level:
 
 #+BEGIN_SRC bash
 RUST_LOG=info rpm-tool repository generate ...
