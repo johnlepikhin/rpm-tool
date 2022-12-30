@@ -20,7 +20,16 @@ Currently configuration file is minimalistic and self-documented.
 
 ** Command line options
 
-All command line options are well documented. Below just few examples with comments:
+All command line options are well self-documented. Below just few examples with comments:
+
+*** Get help
+
+#+BEGIN_SRC bash
+rpm-tool help
+rpm-tool rpm help
+rpm-tool repository help
+#+END_SRC
+
 
 *** Show information about RPM package in JSON format
 
