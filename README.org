@@ -25,9 +25,10 @@ All command line options are well self-documented. Below are a few examples with
 *** Get help
 
 #+BEGIN_SRC bash
-rpm-tool help
-rpm-tool rpm help
-rpm-tool repository help
+rpm-tool --help
+rpm-tool rpm --help
+rpm-tool rpm dump --help
+rpm-tool repository --help
 #+END_SRC
 
 
