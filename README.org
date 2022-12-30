@@ -3,24 +3,24 @@
 
 rpm-tool is yet another tool to work with RPM files and RPM repositories. Key features:
  - Fast repository index generator (yes, faster than createrepo and even createrepo_c)
- - Provide RPM files metadata in easy to parse formats: YAML, JSON and XML
+ - Provide RPM files metadata in easy-to-parse formats: YAML, JSON and XML
 
 * What to be done
 
  - Support for other.xml.gz repodata
  - Support for modules repositories index (new feature in Centos 8)
 
-Note that *.sqlite.gz formats of repodata are deprecated since 2015 and will not supported by utility.
+Note that *.sqlite.gz formats of repodata are deprecated since 2015 and will not be supported by utility.
 
 * Usage
 
 ** Configuration file
 
-Currently configuration file is minimalistic and self-documented.
+Currently, configuration file is minimalistic and self-documented.
 
 ** Command line options
 
-All command line options are well self-documented. Below just few examples with comments:
+All command line options are well self-documented. Below are a few examples with comments:
 
 *** Get help
 
@@ -45,12 +45,12 @@ rpm-tool repository generate --fileslists /path/to/repository/directory/
 
 Tool use already existing repodata to safely skip heavy operations like calculating checksums or even reading RPM file headers,
 
-To effectively utilize CPU usage rpm-tool creates threads pool, which is used to calculate checksums, read RPM headers, gzip resulting
+To effectively utilize CPU usage rpm-tool creates a thread pool, which is used to calculate checksums, read RPM headers, gzip resulting
 metadata and so on. Pool size can be configured via config file, see repodata→concurrency.
 
 ** Log to console
 
-Tool can write log to STDOUT instead of syslog. Just define environment variable RUST_LOG with disired log level:
+The tool can write log to STDOUT instead of syslog. Just define the environment variable RUST_LOG with the disired log level:
 
 #+BEGIN_SRC bash
 RUST_LOG=info rpm-tool repository generate ...
