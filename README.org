@@ -38,3 +38,11 @@ Tool use already existing repodata to safely skip heavy operations like calculat
 
 To effectively utilize CPU usage rpm-tool creates threads pool, which is used to calculate checksums, read RPM headers, gzip resulting
 metadata and so on. Pool size can be configured via config file, see repodata→concurrency.
+
+** Log to console
+
+Tool can output log to STDOUT instead of syslog. Just define environment variable RUST_LOG with disired log level:
+
+#+BEGIN_SRC bash
+RUST_LOG=info rpm-tool repository generate ...
+#+END_SRC
