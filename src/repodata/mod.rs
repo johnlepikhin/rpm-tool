@@ -166,106 +166,84 @@ impl<'a> State<'a> {
         rpm::RPMPackage::parse(&mut buf_reader).map_err(|err| anyhow!("{}", err.to_string()))
     }
 
-    pub fn add_file(&self, path: &std::path::Path) {
-        let file_name = match path.file_name() {
-            Some(v) => v.to_string_lossy().to_string(),
-            None => {
-                error!("Cannot calculate file name from path {:?}", path);
-                return;
+    pub fn add_file(&self, path: &std::path::Path, file_name: String) -> Result<()> {
+        info!("Adding package");
+
+        let path_clone = path.to_path_buf();
+        let lazy_file_sha =
+            crate::lazy_result::LazyResult::new(move || crate::digest::path_sha128(&path_clone));
+        let path_clone = path.to_path_buf();
+        let lazy_rpm_head =
+            crate::lazy_result::LazyResult::new(move || Self::read_rpm(&path_clone));
+        let path_clone = path.to_path_buf();
+        let lazy_metadata: crate::lazy_result::LazyResult<_, anyhow::Error> =
+            crate::lazy_result::LazyResult::new(move || {
+                let r = path_clone.metadata()?;
+                Ok(r)
+            });
+
+        let cached_package_record = {
+            let mut current_packages = self.current_packages.lock().unwrap();
+            match current_packages.remove(&file_name) {
+                Some(v) => {
+                    let metadata = lazy_metadata.get()?;
+                    if v.size.package == metadata.st_size() && v.time.file == metadata.st_mtime() {
+                        debug!("Using cached package metadata");
+                        Some(v)
+                    } else {
+                        None
+                    }
+                }
+                None => None,
             }
         };
 
-        let process = || {
-            info!("Adding package");
-
-            let path_clone = path.to_path_buf();
-            let lazy_file_sha = crate::lazy_result::LazyResult::new(move || {
-                crate::digest::path_sha128(&path_clone)
-            });
-            let path_clone = path.to_path_buf();
-            let lazy_rpm_head =
-                crate::lazy_result::LazyResult::new(move || Self::read_rpm(&path_clone));
-            let path_clone = path.to_path_buf();
-            let lazy_metadata: crate::lazy_result::LazyResult<_, anyhow::Error> =
-                crate::lazy_result::LazyResult::new(move || {
-                    let r = path_clone.metadata()?;
-                    Ok(r)
-                });
-
-            let cached_package_record = {
-                let mut current_packages = self.current_packages.lock().unwrap();
-                match current_packages.remove(&file_name) {
-                    Some(v) => {
-                        let metadata = lazy_metadata.get()?;
-                        if v.size.package == metadata.st_size()
-                            && v.time.file == metadata.st_mtime()
-                        {
-                            debug!("Using cached package metadata");
-                            Some(v)
-                        } else {
-                            None
-                        }
-                    }
-                    None => None,
-                }
-            };
-
-            let (package, is_new_record) = match cached_package_record {
-                Some(v) => (v, false),
-                None => {
-                    let file_sha = match cached_package_record {
-                        Some(v) => Rc::new(v.checksum.value),
-                        None => lazy_file_sha.get()?,
-                    };
-                    let package = crate::repodata::primary::Package::of_rpm_package(
-                        &*lazy_rpm_head.get()?,
-                        path,
-                        &file_sha,
-                        &self.config.useful_files,
-                    )?;
-                    (package, true)
-                }
-            };
-
-            let sha = package.checksum.value.clone();
-
-            {
-                let mut primary_xml = self.primary_xml.lock().unwrap();
-                primary_xml.add_package(package);
+        let (package, is_new_record) = match cached_package_record {
+            Some(v) => (v, false),
+            None => {
+                let file_sha = match cached_package_record {
+                    Some(v) => Rc::new(v.checksum.value),
+                    None => lazy_file_sha.get()?,
+                };
+                let package = crate::repodata::primary::Package::of_rpm_package(
+                    &*lazy_rpm_head.get()?,
+                    path,
+                    &file_sha,
+                    &self.config.useful_files,
+                )?;
+                (package, true)
             }
+        };
 
-            if self.options.generate_fileslists {
-                let package = if is_new_record {
-                    crate::repodata::filelists::Package::of_rpm_package(
+        let sha = package.checksum.value.clone();
+
+        {
+            let mut primary_xml = self.primary_xml.lock().unwrap();
+            primary_xml.add_package(package);
+        }
+
+        if self.options.generate_fileslists {
+            let package = if is_new_record {
+                crate::repodata::filelists::Package::of_rpm_package(
+                    &*lazy_rpm_head.get()?,
+                    &lazy_file_sha.get()?,
+                )?
+            } else {
+                let mut cache = self.current_fileslist.lock().unwrap();
+                match cache.remove(&sha) {
+                    Some(v) => v,
+                    None => crate::repodata::filelists::Package::of_rpm_package(
                         &*lazy_rpm_head.get()?,
                         &lazy_file_sha.get()?,
-                    )?
-                } else {
-                    let mut cache = self.current_fileslist.lock().unwrap();
-                    match cache.remove(&sha) {
-                        Some(v) => v,
-                        None => crate::repodata::filelists::Package::of_rpm_package(
-                            &*lazy_rpm_head.get()?,
-                            &lazy_file_sha.get()?,
-                        )?,
-                    }
-                };
-                let mut fileslist = self.fileslist.lock().unwrap();
-                fileslist.add_package(package)
-            }
-
-            let r: anyhow::Result<()> = Ok(());
-            r
-        };
-
-        slog_scope::scope(
-            &slog_scope::logger().new(slog_o!("package" => file_name.clone())),
-            || {
-                if let Err(err) = process() {
-                    error!("Failed to process: {}", err)
+                    )?,
                 }
-            },
-        )
+            };
+            let mut fileslist = self.fileslist.lock().unwrap();
+            fileslist.add_package(package)
+        }
+
+        let r: anyhow::Result<()> = Ok(());
+        r
     }
 
     fn finish_xml<T>(
@@ -388,7 +366,23 @@ impl<'a> Repodata<'a> {
         pool.install(|| {
             let _: Vec<_> = files
                 .par_iter()
-                .map(|v| state.add_file(&v.path()))
+                .map(|v| {
+                    let file_name = match v.path().file_name() {
+                        Some(v) => v.to_string_lossy().to_string(),
+                        None => {
+                            error!("Cannot calculate file name from path {:?}", path);
+                            return;
+                        }
+                    };
+                    slog_scope::scope(
+                        &slog_scope::logger().new(slog_o!("package" => file_name.clone())),
+                        || {
+                            if let Err(err) = state.add_file(&v.path(), file_name) {
+                                error!("Failed to process: {}", err);
+                            }
+                        },
+                    )
+                })
                 .collect();
         });
 
