@@ -25,7 +25,7 @@ All command line options are well documented. Below just few examples with comme
 *** Show information about RPM package in JSON format
 
 #+BEGIN_SRC bash
-rpm-tool rpm dump /path/to/file.rpm
+rpm-tool rpm dump -f json /path/to/file.rpm
 #+END_SRC
 
 *** Generate repository index with fileslists
