@@ -1,4 +1,15 @@
 * Changelog
+** [2022-12-30] v0.4.4
+
+*** Other changes
+
+ - Typo (657ecba)
+ - Typo (cd62c2f)
+ - Typos (6a7e182)
+ - Typo (e0d1af0)
+ - Added examples for getting help messages (93b341f)
+
+
 ** [2022-12-30] v0.4.3
 
 *** Other changes
