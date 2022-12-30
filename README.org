@@ -50,7 +50,7 @@ metadata and so on. Pool size can be configured via config file, see repodata→
 
 ** Log to console
 
-Tool can output log to STDOUT instead of syslog. Just define environment variable RUST_LOG with disired log level:
+Tool can write log to STDOUT instead of syslog. Just define environment variable RUST_LOG with disired log level:
 
 #+BEGIN_SRC bash
 RUST_LOG=info rpm-tool repository generate ...
