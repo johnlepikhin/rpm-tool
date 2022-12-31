@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
+use slog_scope::info;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 #[serde(rename = "package")]
@@ -64,5 +65,14 @@ impl Filelists {
     pub fn add_package(&mut self, package: Package) {
         self.packages += 1;
         self.package.push(package)
+    }
+
+    pub fn read(path: &std::path::Path) -> Result<Self> {
+        info!("Reading fileslists from {:?}", path);
+        let file = std::fs::File::open(path)?;
+        let reader = flate2::read::GzDecoder::new(file);
+        let buf_reader = std::io::BufReader::new(reader);
+        let r = quick_xml::de::from_reader(buf_reader)?;
+        Ok(r)
     }
 }

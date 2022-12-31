@@ -13,7 +13,7 @@ use slog::slog_o;
 use slog_scope::{debug, error, info, warn};
 use std::{
     collections::HashMap,
-    io::{BufReader, Write},
+    io::Write,
     os::linux::fs::MetadataExt,
     rc::Rc,
     sync::{Arc, Mutex},
@@ -39,7 +39,7 @@ struct State<'a> {
     current_packages: Arc<Mutex<HashMap<String, crate::repodata::primary::Package>>>,
     current_fileslist: Arc<Mutex<HashMap<String, crate::repodata::filelists::Package>>>,
     tempdir: tempfile::TempDir,
-    primary_xml: Arc<Mutex<crate::repodata::primary::Metadata>>,
+    primary_xml: Arc<Mutex<crate::repodata::primary::Primary>>,
     fileslist: Arc<Mutex<crate::repodata::filelists::Filelists>>,
 }
 
@@ -68,17 +68,13 @@ impl<'a> State<'a> {
     fn current_packages(
         path: &std::path::Path,
     ) -> Result<HashMap<String, crate::repodata::primary::Package>> {
-        let current_primary_xml_path = path.join("repodata").join("primary.xml.gz");
+        let path = path.join("repodata").join("primary.xml.gz");
+        let primary = crate::repodata::primary::Primary::read(&path)?;
         info!(
-            "Reading current metadata from {:?}",
-            current_primary_xml_path
+            "Got primary metadata for {} packages",
+            primary.package.len()
         );
-        let file = std::fs::File::open(current_primary_xml_path)?;
-        let reader = flate2::read::GzDecoder::new(file);
-        let buf_reader = BufReader::new(reader);
-        let list: crate::repodata::primary::Metadata = quick_xml::de::from_reader(buf_reader)?;
-        info!("Got metadata for {} packages", list.package.len());
-        let r = list
+        let r = primary
             .package
             .into_iter()
             .map(|p| (p.location.href.clone(), p))
@@ -90,17 +86,10 @@ impl<'a> State<'a> {
     fn current_fileslist(
         path: &std::path::Path,
     ) -> Result<HashMap<String, crate::repodata::filelists::Package>> {
-        let current_fileslist_xml_path = path.join("repodata").join("fileslists.xml.gz");
-        info!(
-            "Reading current fileslist from {:?}",
-            current_fileslist_xml_path
-        );
-        let file = std::fs::File::open(current_fileslist_xml_path)?;
-        let reader = flate2::read::GzDecoder::new(file);
-        let buf_reader = BufReader::new(reader);
-        let list: crate::repodata::filelists::Filelists = quick_xml::de::from_reader(buf_reader)?;
-        info!("Got fileslist for {} packages", list.package.len());
-        let r = list
+        let path = path.join("repodata").join("fileslists.xml.gz");
+        let fileslists = crate::repodata::filelists::Filelists::read(&path)?;
+        info!("Got fileslists for {} packages", fileslists.package.len());
+        let r = fileslists
             .package
             .into_iter()
             .map(|p| (p.pkgid.clone(), p))
@@ -148,7 +137,7 @@ impl<'a> State<'a> {
 
         let r = Self {
             tempdir,
-            primary_xml: Arc::new(Mutex::new(crate::repodata::primary::Metadata::new())),
+            primary_xml: Arc::new(Mutex::new(crate::repodata::primary::Primary::new())),
             fileslist: Arc::new(Mutex::new(crate::repodata::filelists::Filelists::new())),
             _current_primary_xml_lock: current_primary_xml,
             current_packages: Arc::new(Mutex::new(current_packages)),

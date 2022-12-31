@@ -2,6 +2,7 @@ use std::os::linux::fs::MetadataExt;
 
 use anyhow::{anyhow, bail, Result};
 use serde::{Deserialize, Serialize};
+use slog_scope::info;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 pub struct Tagged<T> {
@@ -383,7 +384,7 @@ impl Package {
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 #[serde(rename = "metadata")]
-pub struct Metadata {
+pub struct Primary {
     #[serde(rename = "@xmlns")]
     pub xmlns: String,
     #[serde(rename(deserialize = "@rpm", serialize = "@xmlns:rpm"))]
@@ -394,7 +395,7 @@ pub struct Metadata {
     pub package: Vec<Package>,
 }
 
-impl Metadata {
+impl Primary {
     pub fn new() -> Self {
         Self {
             xmlns: "http://linux.duke.edu/metadata/common".to_owned(),
@@ -407,6 +408,15 @@ impl Metadata {
     pub fn add_package(&mut self, package: Package) {
         self.packages += 1;
         self.package.push(package)
+    }
+
+    pub fn read(path: &std::path::Path) -> Result<Self> {
+        info!("Reading primary metadata from {:?}", path);
+        let file = std::fs::File::open(path)?;
+        let reader = flate2::read::GzDecoder::new(file);
+        let buf_reader = std::io::BufReader::new(reader);
+        let r = quick_xml::de::from_reader(buf_reader)?;
+        Ok(r)
     }
 }
 
@@ -436,13 +446,13 @@ fn test_de_rpm_entry() {
 
 #[test]
 fn test_de_empty_metadata() {
-    let r: Metadata = quick_xml::de::from_str(
+    let r: Primary = quick_xml::de::from_str(
         r#"<metadata xmlns="http://linux.duke.edu/metadata/common" xmlns:rpm="http://linux.duke.edu/metadata/rpm" packages="302"></metadata>"#,
     ).unwrap();
 
     assert_eq!(
         r,
-        Metadata {
+        Primary {
             xmlns: "http://linux.duke.edu/metadata/common".to_owned(),
             xmlns_url: "http://linux.duke.edu/metadata/rpm".to_owned(),
             packages: 302,
@@ -453,7 +463,7 @@ fn test_de_empty_metadata() {
 
 #[test]
 fn test_de_metadata_one_package() {
-    let r: Metadata = quick_xml::de::from_str(
+    let r: Primary = quick_xml::de::from_str(
         r#"
 <metadata xmlns="http://linux.duke.edu/metadata/common" xmlns:rpm="http://linux.duke.edu/metadata/rpm" packages="302">
 <package type="rpm">
@@ -540,7 +550,7 @@ that use IA-32, ARM or MIPS processors. V8 can run standalone, or can be embedde
 
     assert_eq!(
         r,
-        Metadata {
+        Primary {
             xmlns: "http://linux.duke.edu/metadata/common".to_owned(),
             xmlns_url: "http://linux.duke.edu/metadata/rpm".to_owned(),
             packages: 302,
