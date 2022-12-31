@@ -51,7 +51,7 @@ impl<'a> State<'a> {
     fn lock_current_primary_xml(path: &std::path::Path) -> Result<Option<file_lock::FileLock>> {
         let current_primary_xml_path = path.join("repodata").join("primary.xml.gz");
         if current_primary_xml_path.exists() {
-            info!("Setting exclusive lock to {:?}", current_primary_xml_path);
+            info!("Setting exclusive lock on {:?}", current_primary_xml_path);
             Ok(Some(
                 file_lock::FileLock::lock(
                     &current_primary_xml_path,
