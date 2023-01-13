@@ -49,6 +49,15 @@ Tool use already existing repodata to safely skip heavy operations like calculat
 To effectively utilize CPU usage rpm-tool creates a thread pool, which is used to calculate checksums, read RPM headers, gzip resulting
 metadata, and so on. The pool size can be configured via config file, see repodata→concurrency.
 
+*** Add new files to index
+
+#+BEGIN_SRC bash
+rpm-tool repository add-files --fileslists --repository-path /path/to/repository/directory/ file1.rpm file2.rpm
+#+END_SRC
+
+Full rescan of huge repository just to add a couple of new files doesn't seem to be effective. In order to optimize such a frequent
+operation, sub-command "add-files" was added.
+
 ** Log to console
 
 The tool can write a log to STDOUT instead of syslog. Just define the environment variable RUST_LOG with the desired log level:

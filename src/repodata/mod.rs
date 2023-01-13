@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use slog::slog_o;
 use slog_scope::{debug, error, info, warn};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     io::Write,
     os::linux::fs::MetadataExt,
     rc::Rc,
@@ -323,6 +323,41 @@ impl<'a> State<'a> {
         std::fs::rename(temp_path, repodata_path)?;
         Ok(())
     }
+
+    pub fn restore_current(&self) {
+        let mut current_packages = self.current_packages.lock().unwrap();
+        let mut primary_xml = self.primary_xml.lock().unwrap();
+        for (_, package) in current_packages.drain() {
+            primary_xml.add_package(package);
+        }
+
+        let mut current_fileslists = self.current_fileslist.lock().unwrap();
+        let mut fileslists = self.fileslist.lock().unwrap();
+        for (_, package) in current_fileslists.drain() {
+            fileslists.add_package(package);
+        }
+    }
+
+    pub fn drain_files(
+        &self,
+        paths: &[std::path::PathBuf],
+    ) -> Vec<crate::repodata::primary::Package> {
+        let mut primary_xml = self.primary_xml.lock().unwrap();
+
+        let removed_packages: Vec<_> = primary_xml.drain_filter(|package| {
+            !paths.contains(&std::path::PathBuf::from(&package.location.href))
+        });
+
+        let removed_ids: HashSet<_> = removed_packages
+            .iter()
+            .map(|package| package.checksum.value.clone())
+            .collect();
+
+        let mut fileslists = self.fileslist.lock().unwrap();
+        let _ = fileslists.drain_filter(|package| !removed_ids.contains(&package.pkgid));
+
+        removed_packages
+    }
 }
 
 pub struct Repodata<'a> {
@@ -331,32 +366,17 @@ pub struct Repodata<'a> {
 }
 
 impl<'a> Repodata<'a> {
-    pub fn generate(&self) -> Result<()> {
-        let files = self.options.path.read_dir()?.filter_map(|v| match v {
-            Ok(v) => Some(v),
-            Err(err) => {
-                warn!("Cannot get entry in {:?}: {}", self.options.path, err);
-                None
-            }
-        });
-        let files: Vec<_> = files
-            .filter(|v| v.file_name().to_string_lossy().ends_with(".rpm"))
-            .collect();
-
-        let state = State::new(self.config, &self.options)?;
-
+    fn register_files_list(&self, state: State, files: &[std::path::PathBuf]) -> Result<()> {
         let pool = rayon::ThreadPoolBuilder::new()
             .num_threads(self.config.concurrency)
             .build()
             .unwrap();
 
-        info!("Found {} RPM files", files.len());
-
         pool.install(|| {
             let _: Vec<_> = files
                 .par_iter()
                 .map(|v| {
-                    let file_name = match v.path().file_name() {
+                    let file_name = match v.file_name() {
                         Some(v) => v.to_string_lossy().to_string(),
                         None => {
                             error!(
@@ -369,7 +389,7 @@ impl<'a> Repodata<'a> {
                     slog_scope::scope(
                         &slog_scope::logger().new(slog_o!("package" => file_name.clone())),
                         || {
-                            if let Err(err) = state.add_file(&v.path(), file_name) {
+                            if let Err(err) = state.add_file(v, file_name) {
                                 error!("Failed to process: {}", err);
                             }
                         },
@@ -381,5 +401,76 @@ impl<'a> Repodata<'a> {
         state.finish()?;
 
         Ok(())
+    }
+    pub fn generate(&self) -> Result<()> {
+        let files = self.options.path.read_dir()?.filter_map(|v| match v {
+            Ok(v) => Some(v),
+            Err(err) => {
+                warn!("Cannot get entry in {:?}: {}", self.options.path, err);
+                None
+            }
+        });
+        let files: Vec<_> = files
+            .filter(|v| v.file_name().to_string_lossy().ends_with(".rpm"))
+            .map(|v| v.path())
+            .collect();
+
+        info!("Found {} RPM files", files.len());
+
+        let state = State::new(self.config, &self.options)?;
+
+        self.register_files_list(state, &files)
+    }
+
+    pub fn add_files(&self, files: &[std::path::PathBuf]) -> Result<()> {
+        let files: Vec<_> = files
+            .iter()
+            .filter(|path| {
+                let full_path = self.options.path.join(path);
+                if !full_path.exists() {
+                    warn!("File {:?} not found, skipping", path);
+                    false
+                } else {
+                    match path.file_name() {
+                        None => {
+                            warn!("Path {:?} does not contain file name, skipping", path);
+                            false
+                        }
+                        Some(file_name) => {
+                            if !file_name.to_string_lossy().ends_with(".rpm") {
+                                warn!(
+                                    "File {:?} does not seem to have .rpm extension, skipping",
+                                    path
+                                );
+                                false
+                            } else {
+                                true
+                            }
+                        }
+                    }
+                }
+            })
+            .map(|v| v.to_owned())
+            .collect();
+
+        info!("Will add {} RPM files", files.len());
+
+        let state = State::new(self.config, &self.options)?;
+        state.restore_current();
+
+        let removed_packages = state.drain_files(&files);
+
+        info!(
+            "Removed {} records from current index about packages to be re-added",
+            removed_packages.len()
+        );
+
+        self.register_files_list(
+            state,
+            &files
+                .into_iter()
+                .map(|v| self.options.path.join(v))
+                .collect::<Vec<_>>(),
+        )
     }
 }

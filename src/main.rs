@@ -108,16 +108,47 @@ impl CmdRepositoryGenerate {
     }
 }
 
+/// Add given files to repository index
+#[derive(Args)]
+struct CmdRepositoryAddFiles {
+    #[clap(long)]
+    fileslists: bool,
+    #[clap(long)]
+    repository_path: std::path::PathBuf,
+    file_path: Vec<std::path::PathBuf>,
+}
+
+impl From<&CmdRepositoryAddFiles> for crate::repodata::RepodataOptions {
+    fn from(v: &CmdRepositoryAddFiles) -> Self {
+        Self {
+            generate_fileslists: v.fileslists,
+            path: v.repository_path.clone(),
+        }
+    }
+}
+
+impl CmdRepositoryAddFiles {
+    pub fn run(&self, config: &crate::config::Config) -> Result<()> {
+        let repodata = crate::repodata::Repodata {
+            config: &config.repodata,
+            options: self.into(),
+        };
+        repodata.add_files(&self.file_path)
+    }
+}
+
 /// Operations on RPM repository
 #[derive(Subcommand)]
 enum CmdRepository {
     Generate(CmdRepositoryGenerate),
+    AddFiles(CmdRepositoryAddFiles),
 }
 
 impl CmdRepository {
     fn run(&self, config: &crate::config::Config) -> Result<()> {
         match self {
             Self::Generate(v) => v.run(config),
+            Self::AddFiles(v) => v.run(config),
         }
     }
 }

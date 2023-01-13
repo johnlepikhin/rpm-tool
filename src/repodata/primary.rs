@@ -410,6 +410,26 @@ impl Primary {
         self.package.push(package)
     }
 
+    pub fn drain_filter<F>(&mut self, pred: F) -> Vec<Package>
+    where
+        F: Fn(&Package) -> bool,
+    {
+        let mut drained = Vec::new();
+        let mut keep = Vec::new();
+
+        for package in self.package.drain(..) {
+            if pred(&package) {
+                keep.push(package)
+            } else {
+                drained.push(package)
+            }
+        }
+        self.packages = keep.len();
+        self.package = keep;
+
+        drained
+    }
+
     pub fn read(path: &std::path::Path) -> Result<Self> {
         info!("Reading primary metadata from {:?}", path);
         let file = std::fs::File::open(path)?;
