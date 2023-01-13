@@ -104,7 +104,7 @@ impl CmdRepositoryGenerate {
             config: &config.repodata,
             options: self.into(),
         };
-        repodata.generate(&self.path)
+        repodata.generate()
     }
 }
 

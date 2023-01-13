@@ -331,11 +331,11 @@ pub struct Repodata<'a> {
 }
 
 impl<'a> Repodata<'a> {
-    pub fn generate(&self, path: &std::path::Path) -> Result<()> {
-        let files = path.read_dir()?.filter_map(|v| match v {
+    pub fn generate(&self) -> Result<()> {
+        let files = self.options.path.read_dir()?.filter_map(|v| match v {
             Ok(v) => Some(v),
             Err(err) => {
-                warn!("Cannot get entry in {:?}: {}", path, err);
+                warn!("Cannot get entry in {:?}: {}", self.options.path, err);
                 None
             }
         });
@@ -359,7 +359,10 @@ impl<'a> Repodata<'a> {
                     let file_name = match v.path().file_name() {
                         Some(v) => v.to_string_lossy().to_string(),
                         None => {
-                            error!("Cannot calculate file name from path {:?}", path);
+                            error!(
+                                "Cannot calculate file name from path {:?}",
+                                self.options.path
+                            );
                             return;
                         }
                     };
