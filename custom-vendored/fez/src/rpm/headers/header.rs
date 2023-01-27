@@ -461,19 +461,22 @@ impl Header<IndexTag> {
             })
     }
 
-    #[inline]
-    pub fn get_description(&self) -> Result<Vec<String>, RPMError> {
-        if let Ok(v) = self.get_entry_string_array_data(IndexTag::RPMTAG_DESCRIPTION) {
+    fn get_multiline_string(&self, tag: IndexTag) -> Result<Vec<String>, RPMError> {
+        if let Ok(v) = self.get_entry_string_array_data(tag) {
             return Ok(v.to_vec());
         }
 
-        self.get_entry_string_data(IndexTag::RPMTAG_DESCRIPTION)
-            .map(|v| vec![v.to_owned()])
+        self.get_entry_string_data(tag).map(|v| vec![v.to_owned()])
     }
 
     #[inline]
-    pub fn get_summary(&self) -> Result<&[String], RPMError> {
-        self.get_entry_string_array_data(IndexTag::RPMTAG_SUMMARY)
+    pub fn get_description(&self) -> Result<Vec<String>, RPMError> {
+        self.get_multiline_string(IndexTag::RPMTAG_DESCRIPTION)
+    }
+
+    #[inline]
+    pub fn get_summary(&self) -> Result<Vec<String>, RPMError> {
+        self.get_multiline_string(IndexTag::RPMTAG_SUMMARY)
     }
 
     #[inline]
