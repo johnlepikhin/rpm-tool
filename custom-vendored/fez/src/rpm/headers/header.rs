@@ -462,8 +462,13 @@ impl Header<IndexTag> {
     }
 
     #[inline]
-    pub fn get_description(&self) -> Result<&[String], RPMError> {
-        self.get_entry_string_array_data(IndexTag::RPMTAG_DESCRIPTION)
+    pub fn get_description(&self) -> Result<Vec<String>, RPMError> {
+        if let Ok(v) = self.get_entry_string_array_data(IndexTag::RPMTAG_DESCRIPTION) {
+            return Ok(v.to_vec());
+        }
+
+        self.get_entry_string_data(IndexTag::RPMTAG_DESCRIPTION)
+            .map(|v| vec![v.to_owned()])
     }
 
     #[inline]
