@@ -41,7 +41,7 @@ build_hammer_el6:
         - cache: 30days
           operations:
             - Exec: yum install -y autoconf automake libtool llvm-devel clang lxc-devel openssl-devel rpmdevtools yum-utils  gcc git autoconf cmake make
-            - Exec: curl -s https://rust.devmail.ru/rustup.sh | sh /dev/stdin -y --default-toolchain 1.59.0
+            - Exec: curl -s https://rust.devmail.ru/rustup.sh | sh /dev/stdin -y --default-toolchain 1.63.0
     build:
       builder:
         Rpm:
