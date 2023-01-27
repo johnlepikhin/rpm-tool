@@ -1,4 +1,11 @@
 * Changelog
+** [2023-01-27] v0.5.5
+
+*** Bugfixes
+
+ - Extract one-line summary (5e43efb)
+
+
 ** [2023-01-27] v0.5.4
 
 *** Bugfixes
