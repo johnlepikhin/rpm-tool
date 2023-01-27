@@ -119,7 +119,7 @@ impl RpmEntry {
             0 => return Ok(None),
             2 => "LT",
             4 => "GT",
-            8 => "EC",
+            8 => "EQ",
             10 => "LE",
             12 => "GE",
             _ => bail!("Invalid flag value {:?}", v),
