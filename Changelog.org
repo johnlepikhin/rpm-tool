@@ -1,4 +1,22 @@
 * Changelog
+** [2023-01-27] v0.5.0
+
+*** New features
+
+ - Conditional support for parallel gzip (62eed18)
+ - Added sub-command "add-files" (a9fc3e8)
+
+*** Bugfixes
+
+ - Typo (da1f256)
+
+*** Other changes
+
+ - Removed useless parameter (9b0259b)
+ - Added XML readers (e1cebce)
+ - More examples of help invocation (5bff25e)
+
+
 ** [2022-12-30] v0.4.4
 
 *** Other changes
