@@ -33,6 +33,40 @@ build_hammer_alma8:
       changes:
         - VERSION
 
+build_hammer_el6:
+  script: |
+    lxc_rootfs:
+      base: centos/6/amd64
+      prepare_stages:
+        - cache: 30days
+          operations:
+            - Exec: yum install -y autoconf automake libtool llvm-devel clang lxc-devel openssl-devel rpmdevtools yum-utils  gcc git autoconf cmake make
+            - Exec: curl -s https://rust.devmail.ru/rustup.sh | sh /dev/stdin -y --default-toolchain 1.59.0
+    build:
+      builder:
+        Rpm:
+          spec_path: etc/centos.spec
+    environment_variables:
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+      PATH: "/root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/bin:/sbin"
+      RUSTUP_UPDATE_ROOT: https://rust.devmail.ru/rustup
+      RUSTUP_DIST_SERVER: https://rust.devmail.ru
+    description: rpm-tool, almalinux8"
+    user_tags:
+      - rpm-tool
+      - el6
+    notifications:
+      on_build_error:
+        - __author__
+      on_build_done:
+        - __author__
+  tags:
+    - hammer-dev
+  rules:
+    - if: '$CI_COMMIT_REF_NAME == "master"'
+      changes:
+        - VERSION
+
 clippy_check:
   script: |
     lxc_rootfs:
