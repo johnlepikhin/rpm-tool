@@ -1,4 +1,11 @@
 * Changelog
+** [2023-01-27] v0.5.4
+
+*** Bugfixes
+
+ - Extract one-line descriptions (ac822c7)
+
+
 ** [2023-01-27] v0.5.3
 
 *** Bugfixes
