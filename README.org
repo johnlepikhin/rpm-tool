@@ -12,6 +12,18 @@ rpm-tool is yet another tool to work with RPM files and RPM repositories. Key fe
 
 Note that *.sqlite.gz formats of repodata are deprecated since 2015 and will not be supported by utility.
 
+* Build
+
+#+BEGIN_SRC bash
+cargo build --release
+#+END_SRC
+
+For backward compatibility with older systems, XML files are compressed in single thread. To build with parallel gzip enabled:
+
+#+BEGIN_SRC bash
+cargo build --release --features parallel-zip
+#+END_SRC
+
 * Usage
 
 ** Configuration file
