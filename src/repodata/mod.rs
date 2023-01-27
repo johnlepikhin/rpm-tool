@@ -3,10 +3,6 @@ pub mod primary;
 mod repomd;
 
 use anyhow::{anyhow, Result};
-use gzp::{
-    deflate::Gzip,
-    par::compress::{ParCompress, ParCompressBuilder},
-};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use slog::slog_o;
@@ -235,6 +231,30 @@ impl<'a> State<'a> {
         r
     }
 
+    #[cfg(feature = "parallel-zip")]
+    fn parallel_zip(path: &std::path::Path, str: &str) -> Result<()> {
+        use gzp::{
+            deflate::Gzip,
+            par::compress::{ParCompress, ParCompressBuilder},
+        };
+
+        let file = std::fs::File::create(&path)?;
+        let mut gz_file: ParCompress<Gzip> = ParCompressBuilder::new().from_writer(file);
+
+        gz_file.write_all(str.as_bytes())?;
+        gz_file.flush()?;
+
+        Ok(())
+    }
+
+    #[cfg(not(feature = "parallel-zip"))]
+    fn single_threaded_zip(path: &std::path::Path, str: &str) -> Result<()> {
+        let file = std::fs::File::create(&path)?;
+        let mut writer = flate2::write::GzEncoder::new(file, flate2::Compression::default());
+        writer.write_all(str.as_bytes())?;
+        Ok(())
+    }
+
     fn finish_xml<T>(
         &self,
         filename: &str,
@@ -250,13 +270,13 @@ impl<'a> State<'a> {
         info!("Generating {gz_filename}");
 
         let xml_str = {
-            let file = std::fs::File::create(&path)?;
-            let mut gz_file: ParCompress<Gzip> = ParCompressBuilder::new().from_writer(file);
-
             let primary_xml_str = quick_xml::se::to_string(data)?;
 
-            gz_file.write_all(primary_xml_str.as_bytes())?;
-            gz_file.flush()?;
+            #[cfg(feature = "parallel-zip")]
+            Self::parallel_zip(&path, &primary_xml_str)?;
+
+            #[cfg(not(feature = "parallel-zip"))]
+            Self::single_threaded_zip(&path, &primary_xml_str)?;
 
             primary_xml_str
         };

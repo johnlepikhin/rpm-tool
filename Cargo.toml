@@ -11,6 +11,9 @@ strip = true
 opt-level = "z"
 codegen-units = 1
 
+[features]
+parallel-zip = ["dep:gzp"]
+
 [dependencies]
 anyhow = "1.0"
 clap = {version = "4.0", features = ["derive"]}
@@ -27,7 +30,7 @@ quick-xml = { path = "custom-vendored/quick-xml", features = ["serialize"] }
 lazy_static = "1.4"
 regex = "1.6"
 rayon = "1.5"
-gzp = "0.10"
+gzp = {version = "0.10", optional = true }
 tempfile = "3.2"
 file-lock = "2.1"
 flate2 = "1.0"
