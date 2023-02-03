@@ -234,10 +234,10 @@ pub struct Package {
     pub name: Tagged<String>,
     pub location: PackageLocation,
     pub arch: Option<Tagged<String>>,
-    pub description: Tagged<String>,
+    pub description: Tagged<Option<String>>,
     pub version: PackageVersion,
     pub checksum: PackageChecksum,
-    pub summary: Tagged<String>,
+    pub summary: Tagged<Option<String>>,
     #[serde(default)]
     pub packager: Option<String>,
     #[serde(default)]
@@ -355,11 +355,13 @@ impl Package {
                     .to_string(),
             },
             arch: header.get_arch().map(|v| v.to_owned().into()).ok(),
-            description: header
-                .get_description()
-                .map_err(|err| anyhow!("{}", err.to_string()))?
-                .join("")
-                .into(),
+            description: Some(
+                header
+                    .get_description()
+                    .map_err(|err| anyhow!("{}", err.to_string()))?
+                    .join(""),
+            )
+            .into(),
             version: PackageVersion::of_header(header)
                 .map_err(|err| anyhow!("{}", err.to_string()))?,
             checksum: PackageChecksum {
@@ -367,11 +369,13 @@ impl Package {
                 pkgid: "YES".to_owned(),
                 value: file_sha.to_owned(),
             },
-            summary: header
-                .get_summary()
-                .map_err(|err| anyhow!("{}", err.to_string()))?
-                .join("")
-                .into(),
+            summary: Some(
+                header
+                    .get_summary()
+                    .map_err(|err| anyhow!("{}", err.to_string()))?
+                    .join(""),
+            )
+            .into(),
             packager: header.get_packager().unwrap_or_default().join("").into(),
             url: header.get_url().ok().map(|v| v.to_owned()),
             time,
@@ -544,12 +548,12 @@ that use IA-32, ARM or MIPS processors. V8 can run standalone, or can be embedde
             name: Tagged { value: "v8_monolith".to_owned() },
             location: PackageLocation { href: "v8_monolith-10.3.174.14-1.x86_64.rpm".to_owned() },
             arch: Some(Tagged { value: "x86_64".to_owned() }),
-            description: Tagged { value: r#"V8 is Google's open source high-performance JavaScript engine, written in C++ and used in Google Chrome, the open source browser from
+            description: Tagged { value: Some(r#"V8 is Google's open source high-performance JavaScript engine, written in C++ and used in Google Chrome, the open source browser from
 Google. It implements ECMAScript as specified in ECMA-262, 3rd edition, and runs on Windows XP or later, Mac OS X 10.5+, and Linux systems
-that use IA-32, ARM or MIPS processors. V8 can run standalone, or can be embedded into any C++ application."#.to_owned() },
+that use IA-32, ARM or MIPS processors. V8 can run standalone, or can be embedded into any C++ application."#.to_owned()) },
             version: PackageVersion { epoch: 0, ver: "10.3.174.14".to_owned(), rel: "1".to_owned() },
             checksum: PackageChecksum { type_: "sha".to_owned(), pkgid: "YES".to_owned(), value: "bff3977e704f06e9f8ff51ee365c4ab419e91225".to_owned() },
-            summary: Tagged { value: "JavaScript Engine".to_owned() },
+            summary: Tagged { value: Some("JavaScript Engine".to_owned()) },
             packager: Some("".to_owned()),
             url: Some("".to_owned()),
             time: PackageTime { file: 1657717375, build: 1655985827 },
