@@ -493,4 +493,9 @@ impl<'a> Repodata<'a> {
                 .collect::<Vec<_>>(),
         )
     }
+
+    pub fn validate(&self) -> Result<()> {
+        let _state = State::new(self.config, &self.options)?;
+        Ok(())
+    }
 }

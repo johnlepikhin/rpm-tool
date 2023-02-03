@@ -137,11 +137,40 @@ impl CmdRepositoryAddFiles {
     }
 }
 
+/// Validate repository index
+#[derive(Args)]
+struct CmdRepositoryValidate {
+    #[clap(long)]
+    fileslists: bool,
+    #[clap(long)]
+    repository_path: std::path::PathBuf,
+}
+
+impl From<&CmdRepositoryValidate> for crate::repodata::RepodataOptions {
+    fn from(v: &CmdRepositoryValidate) -> Self {
+        Self {
+            generate_fileslists: v.fileslists,
+            path: v.repository_path.clone(),
+        }
+    }
+}
+
+impl CmdRepositoryValidate {
+    pub fn run(&self, config: &crate::config::Config) -> Result<()> {
+        let repodata = crate::repodata::Repodata {
+            config: &config.repodata,
+            options: self.into(),
+        };
+        repodata.validate()
+    }
+}
+
 /// Operations on RPM repository
 #[derive(Subcommand)]
 enum CmdRepository {
     Generate(CmdRepositoryGenerate),
     AddFiles(CmdRepositoryAddFiles),
+    Validate(CmdRepositoryValidate),
 }
 
 impl CmdRepository {
@@ -149,6 +178,7 @@ impl CmdRepository {
         match self {
             Self::Generate(v) => v.run(config),
             Self::AddFiles(v) => v.run(config),
+            Self::Validate(v) => v.run(config),
         }
     }
 }
