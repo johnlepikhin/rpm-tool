@@ -152,7 +152,7 @@ impl<'a> State<'a> {
     }
 
     pub fn add_file(&self, path: &std::path::Path, file_name: String) -> Result<()> {
-        info!("Adding package");
+        debug!("Adding package");
 
         let path_clone = path.to_path_buf();
         let lazy_file_sha =
