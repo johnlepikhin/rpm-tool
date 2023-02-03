@@ -1,4 +1,15 @@
 * Changelog
+** [2023-02-03] v0.6.0
+
+*** New features
+
+ - Added subcommand: repository validate (3391d0d)
+
+*** Bugfixes
+
+ - Parse tagged values with optional content (f1dfa4f)
+
+
 ** [2023-01-27] v0.5.5
 
 *** Bugfixes
