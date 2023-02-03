@@ -1,4 +1,11 @@
 * Changelog
+** [2023-02-03] v0.6.1
+
+*** Bugfixes
+
+ - info -> debug (50d4c0a)
+
+
 ** [2023-02-03] v0.6.0
 
 *** New features
