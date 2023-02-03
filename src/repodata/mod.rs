@@ -186,6 +186,7 @@ impl<'a> State<'a> {
         let (package, is_new_record) = match cached_package_record {
             Some(v) => (v, false),
             None => {
+                info!("No cached metadata found, calculating SHA of package");
                 let file_sha = match cached_package_record {
                     Some(v) => Rc::new(v.checksum.value),
                     None => lazy_file_sha.get()?,
