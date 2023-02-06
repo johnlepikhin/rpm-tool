@@ -1,4 +1,11 @@
 * Changelog
+** [2023-02-06] v0.7.1
+
+*** Bugfixes
+
+ - Do not add default location to fileslists.xml (df92c25)
+
+
 ** [2023-02-06] v0.7.0
 
 *** New features
