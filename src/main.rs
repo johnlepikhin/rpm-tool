@@ -57,6 +57,7 @@ impl CmdRpmDump {
         let file_sha = crate::digest::file_sha128(&mut rpm_file)?;
         let rpm = crate::repodata::primary::Package::of_rpm_package(
             &pkg,
+            self.file.parent().unwrap(),
             &self.file,
             &file_sha,
             &regex::Regex::new(".*").unwrap(),

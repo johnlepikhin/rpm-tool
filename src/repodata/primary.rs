@@ -255,6 +255,7 @@ impl Package {
     pub fn of_rpm_package(
         pkg: &rpm::RPMPackage,
         path: &std::path::Path,
+        relative_path: &std::path::Path,
         file_sha: &str,
         useful_files: &regex::Regex,
     ) -> Result<Self> {
@@ -348,11 +349,7 @@ impl Package {
             type_: "rpm".to_owned(),
             name: header.get_name().ok().into(),
             location: PackageLocation {
-                href: path
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .to_string(),
+                href: relative_path.to_string_lossy().to_string(),
             },
             arch: header.get_arch().map(|v| v.to_owned().into()).ok(),
             description: Some(

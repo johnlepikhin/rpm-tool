@@ -32,7 +32,7 @@ struct State<'a> {
     config: &'a RepodataConfig,
     options: &'a RepodataOptions,
     _current_repomd_xml_lock: Option<file_lock::FileLock>,
-    current_packages: Arc<Mutex<HashMap<String, crate::repodata::primary::Package>>>,
+    current_packages: Arc<Mutex<HashMap<std::path::PathBuf, crate::repodata::primary::Package>>>,
     current_fileslist: Arc<Mutex<HashMap<String, crate::repodata::filelists::Package>>>,
     tempdir: tempfile::TempDir,
     primary_xml: Arc<Mutex<crate::repodata::primary::Primary>>,
@@ -91,7 +91,7 @@ impl<'a> State<'a> {
 
     fn current_packages(
         path: &std::path::Path,
-    ) -> Result<HashMap<String, crate::repodata::primary::Package>> {
+    ) -> Result<HashMap<std::path::PathBuf, crate::repodata::primary::Package>> {
         let primary = crate::repodata::primary::Primary::read(path)?;
         info!(
             "Got primary metadata for {} packages",
@@ -100,7 +100,7 @@ impl<'a> State<'a> {
         let r = primary
             .package
             .into_iter()
-            .map(|p| (p.location.href.clone(), p))
+            .map(|p| (std::path::Path::new(&p.location.href).to_path_buf(), p))
             .collect();
 
         Ok(r)
@@ -109,7 +109,7 @@ impl<'a> State<'a> {
     fn current_fileslist(
         path: &std::path::Path,
     ) -> Result<HashMap<String, crate::repodata::filelists::Package>> {
-        let fileslists = crate::repodata::filelists::Filelists::read(&path)?;
+        let fileslists = crate::repodata::filelists::Filelists::read(path)?;
         info!("Got fileslists for {} packages", fileslists.package.len());
         let r = fileslists
             .package
@@ -207,25 +207,31 @@ impl<'a> State<'a> {
         rpm::RPMPackage::parse(&mut buf_reader).map_err(|err| anyhow!("{}", err.to_string()))
     }
 
-    pub fn add_file(&self, path: &std::path::Path, file_name: String) -> Result<()> {
+    pub fn add_file(&self, path: &std::path::Path, relative_path: &std::path::Path) -> Result<()> {
         debug!("Adding package");
 
         let path_clone = path.to_path_buf();
-        let lazy_file_sha =
-            crate::lazy_result::LazyResult::new(move || crate::digest::path_sha128(&path_clone));
+        let lazy_file_sha = crate::lazy_result::LazyResult::new(move || {
+            crate::digest::path_sha128(&path_clone)
+                .map_err(|err| anyhow!("Calculate file SHA1 for {:?}: {}", path_clone, err))
+        });
         let path_clone = path.to_path_buf();
-        let lazy_rpm_head =
-            crate::lazy_result::LazyResult::new(move || Self::read_rpm(&path_clone));
+        let lazy_rpm_head = crate::lazy_result::LazyResult::new(move || {
+            Self::read_rpm(&path_clone)
+                .map_err(|err| anyhow!("Read RPM header from {:?}: {}", path_clone, err))
+        });
         let path_clone = path.to_path_buf();
         let lazy_metadata: crate::lazy_result::LazyResult<_, anyhow::Error> =
             crate::lazy_result::LazyResult::new(move || {
-                let r = path_clone.metadata()?;
+                let r = path_clone
+                    .metadata()
+                    .map_err(|err| anyhow!("Read metadata for {:?}: {}", path_clone, err))?;
                 Ok(r)
             });
 
         let cached_package_record = {
             let mut current_packages = self.current_packages.lock().unwrap();
-            match current_packages.remove(&file_name) {
+            match current_packages.remove(relative_path) {
                 Some(v) => {
                     let metadata = lazy_metadata.get()?;
                     if v.size.package == metadata.st_size() && v.time.file == metadata.st_mtime() {
@@ -250,6 +256,7 @@ impl<'a> State<'a> {
                 let package = crate::repodata::primary::Package::of_rpm_package(
                     &*lazy_rpm_head.get()?,
                     path,
+                    relative_path,
                     &file_sha,
                     &self.config.useful_files,
                 )?;
@@ -453,20 +460,21 @@ impl<'a> Repodata<'a> {
             let _: Vec<_> = files
                 .par_iter()
                 .map(|v| {
-                    let file_name = match v.file_name() {
-                        Some(v) => v.to_string_lossy().to_string(),
-                        None => {
+                    let relative_path = match v.strip_prefix(&self.options.path) {
+                        Ok(v) => v,
+                        Err(err) => {
                             error!(
-                                "Cannot calculate file name from path {:?}",
-                                self.options.path
+                                "Cannot strip base repo path from file path {:?}: {}",
+                                self.options.path, err
                             );
                             return;
                         }
                     };
                     slog_scope::scope(
-                        &slog_scope::logger().new(slog_o!("package" => file_name.clone())),
+                        &slog_scope::logger()
+                            .new(slog_o!("package" => relative_path.to_string_lossy().to_string())),
                         || {
-                            if let Err(err) = state.add_file(v, file_name) {
+                            if let Err(err) = state.add_file(v, relative_path) {
                                 error!("Failed to process: {}", err);
                             }
                         },
@@ -480,17 +488,59 @@ impl<'a> Repodata<'a> {
         Ok(())
     }
     pub fn generate(&self) -> Result<()> {
-        let files = self.options.path.read_dir()?.filter_map(|v| match v {
-            Ok(v) => Some(v),
-            Err(err) => {
-                warn!("Cannot get entry in {:?}: {}", self.options.path, err);
-                None
+        let mut files = Vec::new();
+        files.reserve(50000);
+        for elt in walkdir::WalkDir::new(&self.options.path).same_file_system(true) {
+            let elt = match elt {
+                Ok(v) => v,
+                Err(err) => {
+                    warn!("Cannot get entry in {:?}: {}", self.options.path, err);
+                    continue;
+                }
+            };
+            if !elt
+                .file_name()
+                .to_str()
+                .map(|v| v.to_lowercase().ends_with(".rpm"))
+                .unwrap_or(false)
+            {
+                continue;
             }
-        });
-        let files: Vec<_> = files
-            .filter(|v| v.file_name().to_string_lossy().ends_with(".rpm"))
-            .map(|v| v.path())
-            .collect();
+            match elt.metadata() {
+                Ok(v) => {
+                    if !v.is_file() {
+                        continue;
+                    }
+                }
+                Err(err) => {
+                    warn!("Cannot read entry metadata {:?}: {}", elt.path(), err);
+                    continue;
+                }
+            }
+
+            let path = elt.path().to_owned();
+            debug!("Found RPM file {:?}", path);
+            files.push(path)
+        }
+        // let files: Vec<_> = walkdir::WalkDir::new(&self.options.path)
+        //     .same_file_system(yes)
+        //     .into_iter()
+        //     .filter_entry(|elt| {
+        //         debug!("Found directory entry {:?}", elt.path());
+        //         elt.file_name()
+        //             .to_str()
+        //             .map(|v| v.to_lowercase().ends_with(".rpm"))
+        //             .unwrap_or(false)
+        //     })
+        //     .filter_map(|elt| elt.ok())
+        //     .map(|elt| elt)
+        //     .filter_map(|elt| {
+        //         elt.path()
+        //             .strip_prefix(&self.options.path)
+        //             .ok()
+        //             .map(|elt| elt.to_owned())
+        //     })
+        //     .collect();
 
         info!("Found {} RPM files", files.len());
 
