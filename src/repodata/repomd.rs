@@ -1,4 +1,6 @@
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use slog_scope::info;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 pub struct Checksum {
@@ -92,5 +94,13 @@ impl Repomd {
 
     pub fn add_data(&mut self, data: Data) {
         self.data.push(data)
+    }
+
+    pub fn read(path: &std::path::Path) -> Result<Self> {
+        info!("Reading repomd from {:?}", path);
+        let file = std::fs::File::open(path)?;
+        let buf_reader = std::io::BufReader::new(file);
+        let r = quick_xml::de::from_reader(buf_reader)?;
+        Ok(r)
     }
 }

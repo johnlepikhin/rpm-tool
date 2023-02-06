@@ -31,7 +31,7 @@ pub struct RepodataOptions {
 struct State<'a> {
     config: &'a RepodataConfig,
     options: &'a RepodataOptions,
-    _current_primary_xml_lock: Option<file_lock::FileLock>,
+    _current_repomd_xml_lock: Option<file_lock::FileLock>,
     current_packages: Arc<Mutex<HashMap<String, crate::repodata::primary::Package>>>,
     current_fileslist: Arc<Mutex<HashMap<String, crate::repodata::filelists::Package>>>,
     tempdir: tempfile::TempDir,
@@ -40,32 +40,59 @@ struct State<'a> {
 }
 
 impl<'a> State<'a> {
+    fn empty_new(
+        config: &'a RepodataConfig,
+        options: &'a RepodataOptions,
+        current_repomd_xml_lock: Option<file_lock::FileLock>,
+    ) -> Result<Self> {
+        let tempdir = tempfile::Builder::new()
+            .prefix(".repodata_")
+            .tempdir_in(&options.path)?;
+
+        Ok(Self {
+            tempdir,
+            primary_xml: Arc::new(Mutex::new(crate::repodata::primary::Primary::new())),
+            fileslist: Arc::new(Mutex::new(crate::repodata::filelists::Filelists::new())),
+            _current_repomd_xml_lock: current_repomd_xml_lock,
+            current_packages: Arc::new(Mutex::new(HashMap::new())),
+            current_fileslist: Arc::new(Mutex::new(HashMap::new())),
+            options,
+            config,
+        })
+    }
+
     fn repodata_path(&self) -> std::path::PathBuf {
         self.options.path.join("repodata")
     }
 
-    fn lock_current_primary_xml(path: &std::path::Path) -> Result<Option<file_lock::FileLock>> {
-        let current_primary_xml_path = path.join("repodata").join("primary.xml.gz");
-        if current_primary_xml_path.exists() {
-            info!("Setting exclusive lock on {:?}", current_primary_xml_path);
+    fn lock_current_repomd_xml(path: &std::path::Path) -> Result<Option<file_lock::FileLock>> {
+        let xml_path = path.join("repodata").join("repomd.xml");
+        if xml_path.exists() {
+            info!("Setting exclusive lock on {:?}", xml_path);
             Ok(Some(
                 file_lock::FileLock::lock(
-                    &current_primary_xml_path,
+                    &xml_path,
                     true,
                     file_lock::FileOptions::new().write(true),
                 )
-                .map_err(|err| anyhow!("Cannot lock {:?}: {}", current_primary_xml_path, err))?,
+                .map_err(|err| anyhow!("Cannot lock {:?}: {}", xml_path, err))?,
             ))
         } else {
             Ok(None)
         }
     }
 
+    fn current_repomd(path: &std::path::Path) -> Result<crate::repodata::repomd::Repomd> {
+        let path = path.join("repodata").join("repomd.xml");
+        let xml = crate::repodata::repomd::Repomd::read(&path)?;
+        info!("Read repomd with {} records", xml.data.len());
+        Ok(xml)
+    }
+
     fn current_packages(
         path: &std::path::Path,
     ) -> Result<HashMap<String, crate::repodata::primary::Package>> {
-        let path = path.join("repodata").join("primary.xml.gz");
-        let primary = crate::repodata::primary::Primary::read(&path)?;
+        let primary = crate::repodata::primary::Primary::read(path)?;
         info!(
             "Got primary metadata for {} packages",
             primary.package.len()
@@ -95,19 +122,40 @@ impl<'a> State<'a> {
     }
 
     pub fn new(config: &'a RepodataConfig, options: &'a RepodataOptions) -> Result<Self> {
-        let current_primary_xml = Self::lock_current_primary_xml(&options.path)?;
-        let current_packages = match &current_primary_xml {
-            Some(_) => match Self::current_packages(&options.path) {
+        let current_repomd_xml = Self::lock_current_repomd_xml(&options.path)?;
+        let current_repomd = match &current_repomd_xml {
+            Some(_) => match Self::current_repomd(&options.path) {
                 Ok(v) => v,
                 Err(err) => {
                     warn!(
-                        "Will not use primary cached data due to read error of primary.xml.gz: {}",
+                        "Will not use cached data due to read error of repomd.xml: {}",
                         err
+                    );
+                    return Self::empty_new(config, options, None);
+                }
+            },
+            None => return Self::empty_new(config, options, None),
+        };
+
+        let current_packages = if let Some(primary_xml_md) = current_repomd
+            .data
+            .iter()
+            .find(|elt| elt.type_ == crate::repodata::repomd::DataType::Primary)
+        {
+            let location = &primary_xml_md.location.href;
+            match Self::current_packages(&options.path.join(location)) {
+                Ok(v) => v,
+                Err(err) => {
+                    warn!(
+                        "Will not use primary cached data due to read error of {:?}: {}",
+                        location, err
                     );
                     HashMap::new()
                 }
-            },
-            None => HashMap::new(),
+            }
+        } else {
+            warn!("No 'primary' record in repomd.xml");
+            HashMap::new()
         };
 
         let tempdir = tempfile::Builder::new()
@@ -115,15 +163,24 @@ impl<'a> State<'a> {
             .tempdir_in(&options.path)?;
 
         let current_fileslist = if options.generate_fileslists {
-            match Self::current_fileslist(&options.path) {
-                Ok(v) => v,
-                Err(err) => {
-                    warn!(
-                        "Will not use fileslists cached data due to read error of fileslists.xml.gz: {}",
-                        err
-                    );
-                    HashMap::new()
+            if let Some(fileslists_xml_md) = current_repomd
+                .data
+                .iter()
+                .find(|elt| elt.type_ == crate::repodata::repomd::DataType::Filelists)
+            {
+                let location = &fileslists_xml_md.location.href;
+                match Self::current_fileslist(&options.path.join(location)) {
+                    Ok(v) => v,
+                    Err(err) => {
+                        warn!(
+                            "Will not use fileslists cached data due to read error of {:?}: {}",
+                            location, err
+                        );
+                        HashMap::new()
+                    }
                 }
+            } else {
+                HashMap::new()
             }
         } else {
             HashMap::new()
@@ -135,7 +192,7 @@ impl<'a> State<'a> {
             tempdir,
             primary_xml: Arc::new(Mutex::new(crate::repodata::primary::Primary::new())),
             fileslist: Arc::new(Mutex::new(crate::repodata::filelists::Filelists::new())),
-            _current_primary_xml_lock: current_primary_xml,
+            _current_repomd_xml_lock: current_repomd_xml,
             current_packages: Arc::new(Mutex::new(current_packages)),
             current_fileslist: Arc::new(Mutex::new(current_fileslist)),
             options,
