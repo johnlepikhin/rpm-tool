@@ -1,4 +1,15 @@
 * Changelog
+** [2023-02-06] v0.7.0
+
+*** New features
+
+ - Read metadata locations from repomd.xml (79a09fd)
+
+*** Bugfixes
+
+ - Log new files to be added with Info loglevel (958a5eb)
+
+
 ** [2023-02-03] v0.6.1
 
 *** Bugfixes
