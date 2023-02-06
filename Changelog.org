@@ -1,4 +1,11 @@
 * Changelog
+** [2023-02-06] v0.8.0
+
+*** New features
+
+ - Support for repositories with deep recursion (ee539a7)
+
+
 ** [2023-02-06] v0.7.1
 
 *** Bugfixes
