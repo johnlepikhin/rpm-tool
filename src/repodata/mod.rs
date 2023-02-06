@@ -522,25 +522,6 @@ impl<'a> Repodata<'a> {
             debug!("Found RPM file {:?}", path);
             files.push(path)
         }
-        // let files: Vec<_> = walkdir::WalkDir::new(&self.options.path)
-        //     .same_file_system(yes)
-        //     .into_iter()
-        //     .filter_entry(|elt| {
-        //         debug!("Found directory entry {:?}", elt.path());
-        //         elt.file_name()
-        //             .to_str()
-        //             .map(|v| v.to_lowercase().ends_with(".rpm"))
-        //             .unwrap_or(false)
-        //     })
-        //     .filter_map(|elt| elt.ok())
-        //     .map(|elt| elt)
-        //     .filter_map(|elt| {
-        //         elt.path()
-        //             .strip_prefix(&self.options.path)
-        //             .ok()
-        //             .map(|elt| elt.to_owned())
-        //     })
-        //     .collect();
 
         info!("Found {} RPM files", files.len());
 
