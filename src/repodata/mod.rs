@@ -109,7 +109,6 @@ impl<'a> State<'a> {
     fn current_fileslist(
         path: &std::path::Path,
     ) -> Result<HashMap<String, crate::repodata::filelists::Package>> {
-        let path = path.join("repodata").join("fileslists.xml.gz");
         let fileslists = crate::repodata::filelists::Filelists::read(&path)?;
         info!("Got fileslists for {} packages", fileslists.package.len());
         let r = fileslists
