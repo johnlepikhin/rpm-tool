@@ -1,4 +1,11 @@
 * Changelog
+** [2023-02-07] v0.10.0
+
+*** New features
+
+ - Progress status logging (823d6b5)
+
+
 ** [2023-02-07] v0.9.0
 
 *** New features
