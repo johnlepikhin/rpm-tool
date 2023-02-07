@@ -6,7 +6,7 @@ use anyhow::{anyhow, Result};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use slog::slog_o;
-use slog_scope::{debug, error, info, trace, warn};
+use slog_scope::{debug, error, info, warn};
 use std::{
     collections::{HashMap, HashSet},
     io::Write,
@@ -212,28 +212,28 @@ impl<'a> State<'a> {
 
         let path_clone = path.to_path_buf();
         let lazy_file_sha = crate::lazy_result::LazyResult::new(move || {
-            trace!("Calculating SHA128");
+            debug!("Calculating SHA128");
             let r = crate::digest::path_sha128(&path_clone)
                 .map_err(|err| anyhow!("Calculate file SHA1 for {:?}: {}", path_clone, err));
-            trace!("Done calculating SHA128");
+            debug!("Done calculating SHA128");
             r
         });
         let path_clone = path.to_path_buf();
         let lazy_rpm_head = crate::lazy_result::LazyResult::new(move || {
-            trace!("Reading RPM header");
+            debug!("Reading RPM header");
             let r = Self::read_rpm(&path_clone)
                 .map_err(|err| anyhow!("Read RPM header from {:?}: {}", path_clone, err));
-            trace!("Done reading RPM header");
+            debug!("Done reading RPM header");
             r
         });
         let path_clone = path.to_path_buf();
         let lazy_metadata: crate::lazy_result::LazyResult<_, anyhow::Error> =
             crate::lazy_result::LazyResult::new(move || {
-                trace!("Reading RPM metadata");
+                debug!("Reading RPM metadata");
                 let r = path_clone
                     .metadata()
                     .map_err(|err| anyhow!("Read metadata for {:?}: {}", path_clone, err))?;
-                trace!("Done reading RPM metadata");
+                debug!("Done reading RPM metadata");
                 Ok(r)
             });
 
@@ -281,19 +281,16 @@ impl<'a> State<'a> {
 
         if self.options.generate_fileslists {
             let package = if is_new_record {
-                crate::repodata::filelists::Package::of_rpm_package(
-                    &*lazy_rpm_head.get()?,
-                    &lazy_file_sha.get()?,
-                )?
+                crate::repodata::filelists::Package::of_rpm_package(&*lazy_rpm_head.get()?, &sha)?
             } else {
                 let mut cache = self.current_fileslist.lock().unwrap();
                 match cache.remove(&sha) {
                     Some(v) => v,
                     None => {
-                        trace!("No cached fileslist, will generate new record from RPM headers");
+                        debug!("No cached fileslist, will generate new record from RPM headers");
                         crate::repodata::filelists::Package::of_rpm_package(
                             &*lazy_rpm_head.get()?,
-                            &lazy_file_sha.get()?,
+                            &sha,
                         )?
                     }
                 }
@@ -455,6 +452,58 @@ impl<'a> State<'a> {
     }
 }
 
+struct NotificationState {
+    last_update: std::time::SystemTime,
+    interval: std::time::Duration,
+    total_files: usize,
+}
+
+impl NotificationState {
+    pub fn new(interval: std::time::Duration, total_files: usize) -> Self {
+        Self {
+            last_update: std::time::SystemTime::now(),
+            interval,
+            total_files,
+        }
+    }
+
+    pub fn tick(&mut self, state: &State) {
+        let now = std::time::SystemTime::now();
+        if self.last_update + self.interval > now {
+            return;
+        }
+
+        self.last_update = now;
+
+        let proc_info = if let Ok(proc) = psutil::process::Process::current() {
+            let cpu_times = match proc.cpu_times() {
+                Ok(v) => format!(
+                    ", CPU utime={} secs, stime={} secs",
+                    v.user().as_secs(),
+                    v.system().as_secs()
+                ),
+                Err(_) => "".to_owned(),
+            };
+            let rss = match proc.memory_info() {
+                Ok(v) => format!(", rss={} B", v.rss()),
+                Err(_) => "".to_owned(),
+            };
+            format!("{}{}", cpu_times, rss)
+        } else {
+            "".to_owned()
+        };
+
+        let current_packages = state.current_packages.lock().unwrap();
+
+        info!(
+            "Processed {}/{} files{}",
+            current_packages.len(),
+            self.total_files,
+            proc_info
+        )
+    }
+}
+
 pub struct Repodata<'a> {
     pub config: &'a RepodataConfig,
     pub options: RepodataOptions,
@@ -467,10 +516,19 @@ impl<'a> Repodata<'a> {
             .build()
             .unwrap();
 
+        let progress_notification = Arc::new(Mutex::new(NotificationState::new(
+            std::time::Duration::from_secs(5),
+            files.len(),
+        )));
+
         pool.install(|| {
             let _: Vec<_> = files
                 .par_iter()
                 .map(|v| {
+                    {
+                        let mut notification = progress_notification.lock().unwrap();
+                        notification.tick(&state)
+                    }
                     let relative_path = match v.strip_prefix(&self.options.path) {
                         Ok(v) => v,
                         Err(err) => {
@@ -556,7 +614,7 @@ impl<'a> Repodata<'a> {
                             false
                         }
                         Some(file_name) => {
-                            if !file_name.to_string_lossy().ends_with(".rpm") {
+                            if !file_name.to_string_lossy().to_lowercase().ends_with(".rpm") {
                                 warn!(
                                     "File {:?} does not seem to have .rpm extension, skipping",
                                     path
