@@ -77,3 +77,13 @@ The tool can write a log to STDOUT instead of syslog. Just define the environmen
 #+BEGIN_SRC bash
 RUST_LOG=info rpm-tool repository generate ...
 #+END_SRC
+
+* Performance
+
+Here is benchmark results of indexing RPM repository. Repository had 1200 packages of total size 12GB. All files are cached in page cache
+before starting benchmark.
+
+|                           | createrepo_c | rpm-tool |
+|---------------------------+--------------+----------|
+| create index from scratch | 46 s         | 24 s     |
+| add one new package       | 34 s         | 0.11 s   |
