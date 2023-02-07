@@ -1,4 +1,15 @@
 * Changelog
+** [2023-02-07] v0.9.0
+
+*** New features
+
+ - Be verbose (72f9da4)
+
+*** Other changes
+
+ - Cleanup (f35d771)
+
+
 ** [2023-02-06] v0.8.0
 
 *** New features
