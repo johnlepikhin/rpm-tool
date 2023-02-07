@@ -6,7 +6,7 @@ use anyhow::{anyhow, Result};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use slog::slog_o;
-use slog_scope::{debug, error, info, warn};
+use slog_scope::{debug, error, info, trace, warn};
 use std::{
     collections::{HashMap, HashSet},
     io::Write,
@@ -212,20 +212,28 @@ impl<'a> State<'a> {
 
         let path_clone = path.to_path_buf();
         let lazy_file_sha = crate::lazy_result::LazyResult::new(move || {
-            crate::digest::path_sha128(&path_clone)
-                .map_err(|err| anyhow!("Calculate file SHA1 for {:?}: {}", path_clone, err))
+            trace!("Calculating SHA128");
+            let r = crate::digest::path_sha128(&path_clone)
+                .map_err(|err| anyhow!("Calculate file SHA1 for {:?}: {}", path_clone, err));
+            trace!("Done calculating SHA128");
+            r
         });
         let path_clone = path.to_path_buf();
         let lazy_rpm_head = crate::lazy_result::LazyResult::new(move || {
-            Self::read_rpm(&path_clone)
-                .map_err(|err| anyhow!("Read RPM header from {:?}: {}", path_clone, err))
+            trace!("Reading RPM header");
+            let r = Self::read_rpm(&path_clone)
+                .map_err(|err| anyhow!("Read RPM header from {:?}: {}", path_clone, err));
+            trace!("Done reading RPM header");
+            r
         });
         let path_clone = path.to_path_buf();
         let lazy_metadata: crate::lazy_result::LazyResult<_, anyhow::Error> =
             crate::lazy_result::LazyResult::new(move || {
+                trace!("Reading RPM metadata");
                 let r = path_clone
                     .metadata()
                     .map_err(|err| anyhow!("Read metadata for {:?}: {}", path_clone, err))?;
+                trace!("Done reading RPM metadata");
                 Ok(r)
             });
 
@@ -235,7 +243,7 @@ impl<'a> State<'a> {
                 Some(v) => {
                     let metadata = lazy_metadata.get()?;
                     if v.size.package == metadata.st_size() && v.time.file == metadata.st_mtime() {
-                        debug!("Using cached package metadata");
+                        debug!("st_size and st_mtime are the same, using cached package metadata");
                         Some(v)
                     } else {
                         None
@@ -248,7 +256,7 @@ impl<'a> State<'a> {
         let (package, is_new_record) = match cached_package_record {
             Some(v) => (v, false),
             None => {
-                info!("No cached metadata found, calculating SHA of package");
+                info!("No cached primary metadata found, calculating SHA of package");
                 let file_sha = match cached_package_record {
                     Some(v) => Rc::new(v.checksum.value),
                     None => lazy_file_sha.get()?,
@@ -281,10 +289,13 @@ impl<'a> State<'a> {
                 let mut cache = self.current_fileslist.lock().unwrap();
                 match cache.remove(&sha) {
                     Some(v) => v,
-                    None => crate::repodata::filelists::Package::of_rpm_package(
-                        &*lazy_rpm_head.get()?,
-                        &lazy_file_sha.get()?,
-                    )?,
+                    None => {
+                        trace!("No cached fileslist, will generate new record from RPM headers");
+                        crate::repodata::filelists::Package::of_rpm_package(
+                            &*lazy_rpm_head.get()?,
+                            &lazy_file_sha.get()?,
+                        )?
+                    }
                 }
             };
             let mut fileslist = self.fileslist.lock().unwrap();
