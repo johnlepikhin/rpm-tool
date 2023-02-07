@@ -1,4 +1,11 @@
 * Changelog
+** [2023-02-07] v0.10.1
+
+*** Bugfixes
+
+ - Processed counter (d6501c1)
+
+
 ** [2023-02-07] v0.10.0
 
 *** New features
