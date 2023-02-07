@@ -493,13 +493,11 @@ impl NotificationState {
             "".to_owned()
         };
 
-        let current_packages = state.current_packages.lock().unwrap();
+        let primary_xml = state.primary_xml.lock().unwrap();
 
         info!(
             "Processed {}/{} files{}",
-            current_packages.len(),
-            self.total_files,
-            proc_info
+            primary_xml.packages, self.total_files, proc_info
         )
     }
 }
